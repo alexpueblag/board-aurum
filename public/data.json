@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "exportedAt": "2026-05-06T19:54:57.900816",
+  "exportedAt": "2026-05-07T08:40:02.982575",
   "source": "google-sheets",
   "tasks": [
     {
@@ -143,7 +143,7 @@
       "entregable": "Listado",
       "fecha": "Lunes 13",
       "fechaISO": "",
-      "estado": "Pendiente",
+      "estado": "Terminado",
       "observaciones": "",
       "links": []
     },
