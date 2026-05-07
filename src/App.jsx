@@ -1,19 +1,29 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+// ===================================================================
+// CONFIGURACION DE INTEGRACION CON GOOGLE SHEETS (via Apps Script)
+// ===================================================================
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrc0lFolxwJQUF7wtPHNymf7AwNtsjVs08ivOl18veuqo-jkv4AkpwjZsGDX60ETph/exec";
+const SHARED_SECRET = "aurum-2026-x9k7m4q2-secreto";
+const DEBOUNCE_MS = 1500;            // espera tras dejar de escribir antes de guardar texto
+const PROTECTION_MS = 60 * 1000;     // ventana donde el board ignora refresh remoto despues de un save local
+const REFRESH_MS = 5 * 60 * 1000;    // re-fetch periodico de data.json
+const SAVED_FLASH_MS = 1800;         // cuanto dura el badge "guardado" antes de desvanecerse
+
+// Campos que SI escriben al Sheet (las demas se ignoran al sincronizar)
+const SHEET_FIELDS = ["mes", "empresa", "proyecto", "responsable", "semana", "actividad", "entregable", "fecha", "estado", "observaciones"];
+
+// Mapeo de campos del frontend → columnas del Sheet
+const FIELD_TO_SHEET = {
+  mesCompromiso: "mes",
+};
+
 const ESTADOS = ["Pendiente", "En proceso", "Subido", "Terminado"];
 const EMPRESAS = ["Aurum Arquitectos", "YoDesarrollo"];
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const MONTH_INDEX = MESES.reduce((acc, mes, index) => ({ ...acc, [mes]: index }), {});
 
-const BRAND = {
-  blue: "#2CB3FE",
-  coral: "#FF5C5C",
-  gray: "#D9D9D9",
-  ink: "#0F172A",
-  slate: "#334155",
-  pearl: "#F7FAFC",
-  white: "#FFFFFF"
-};
+const BRAND = { blue: "#2CB3FE", coral: "#FF5C5C", gray: "#D9D9D9", ink: "#0F172A" };
 
 const PERSON_COLORS = {
   Alejandro: { main: BRAND.ink, soft: "#F4F8FB", mid: "#DDE7EF", text: BRAND.ink, accent: BRAND.blue },
@@ -24,16 +34,18 @@ const PERSON_COLORS = {
 };
 
 const PROJECT_TONES = [
-  { name: "Base", bg: "rgba(44, 179, 254, 0.075)", border: "rgba(44, 179, 254, 0.25)", chip: "rgba(44, 179, 254, 0.16)" },
-  { name: "Coral", bg: "rgba(255, 92, 92, 0.070)", border: "rgba(255, 92, 92, 0.24)", chip: "rgba(255, 92, 92, 0.15)" },
-  { name: "Neutro", bg: "rgba(217, 217, 217, 0.25)", border: "rgba(148, 163, 184, 0.22)", chip: "rgba(217, 217, 217, 0.55)" },
-  { name: "Tinta", bg: "rgba(15, 23, 42, 0.045)", border: "rgba(15, 23, 42, 0.13)", chip: "rgba(15, 23, 42, 0.08)" },
-  { name: "Cielo", bg: "rgba(125, 211, 252, 0.12)", border: "rgba(56, 189, 248, 0.22)", chip: "rgba(186, 230, 253, 0.5)" }
+  { bg: "rgba(44, 179, 254, 0.075)", border: "rgba(44, 179, 254, 0.25)", chip: "rgba(44, 179, 254, 0.16)" },
+  { bg: "rgba(255, 92, 92, 0.070)", border: "rgba(255, 92, 92, 0.24)", chip: "rgba(255, 92, 92, 0.15)" },
+  { bg: "rgba(217, 217, 217, 0.25)", border: "rgba(148, 163, 184, 0.22)", chip: "rgba(217, 217, 217, 0.55)" },
+  { bg: "rgba(15, 23, 42, 0.045)", border: "rgba(15, 23, 42, 0.13)", chip: "rgba(15, 23, 42, 0.08)" },
+  { bg: "rgba(125, 211, 252, 0.12)", border: "rgba(56, 189, 248, 0.22)", chip: "rgba(186, 230, 253, 0.5)" }
 ];
 
-const REFRESH_MS = 5 * 60 * 1000;
-const CACHE_KEY = "aurum-yodesarrollo-cache-v1";
+const CACHE_KEY = "aurum-yodesarrollo-cache-v2";
 
+// ===================================================================
+// UTILIDADES
+// ===================================================================
 function todayStamp() { return new Date().toISOString().slice(0, 10); }
 function makeId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -58,15 +70,7 @@ function personPalette(name) { return PERSON_COLORS[name] || PERSON_COLORS["Sin 
 function hashText(text) { return String(text || "").split("").reduce((acc, c) => acc + c.charCodeAt(0), 0); }
 function projectTone(project) { return PROJECT_TONES[hashText(project) % PROJECT_TONES.length]; }
 function getDayNumber(fecha) { const m = String(fecha || "").match(/([0-9]{1,2})/); return m ? Number(m[1]) : null; }
-function parseIsoDate(iso) {
-  const parts = String(iso || "").split("-").map(Number);
-  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
-  const [y, m, d] = parts;
-  return new Date(y, m - 1, d);
-}
 function commitmentDate(task) {
-  const iso = parseIsoDate(task.fechaISO);
-  if (iso) return iso;
   const day = getDayNumber(task.fecha);
   const mes = task.mesCompromiso || task.mes;
   const month = MONTH_INDEX[mes];
@@ -84,8 +88,8 @@ function deadlineText(task) {
   const d = daysUntil(task);
   if (d == null) return "Sin fecha";
   if (d === 0) return "Hoy";
-  if (d > 0) return `+${d} días`;
-  return `${d} días`;
+  if (d > 0) return `+${d} dias`;
+  return `${d} dias`;
 }
 function fechaCorta(task) {
   const mes = task.mesCompromiso || task.mes || "";
@@ -108,6 +112,38 @@ function timeAgo(date) {
   return date.toLocaleString();
 }
 
+// ===================================================================
+// API CLIENT (Apps Script)
+// ===================================================================
+async function apiCall(action, payload = {}) {
+  const body = JSON.stringify({ secret: SHARED_SECRET, action, ...payload });
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: "POST",
+    body,
+    // text/plain evita preflight CORS que Apps Script no maneja
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    redirect: "follow",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "Error desconocido del Sheet");
+  return data;
+}
+
+function patchToSheetFormat(patch) {
+  const out = {};
+  for (const k in patch) {
+    const sheetKey = FIELD_TO_SHEET[k] || k;
+    if (SHEET_FIELDS.includes(sheetKey)) {
+      out[sheetKey] = patch[k];
+    }
+  }
+  return out;
+}
+
+// ===================================================================
+// COMPONENTE PRINCIPAL
+// ===================================================================
 export default function BoardControlAurumYoDesarrollo() {
   const [tasks, setTasks] = useState(() => {
     try { const c = localStorage.getItem(CACHE_KEY); return c ? JSON.parse(c) : []; } catch { return []; }
@@ -122,6 +158,19 @@ export default function BoardControlAurumYoDesarrollo() {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
 
+  // Estado de save por tarea: { taskId: 'idle'|'saving'|'saved'|'error', taskId_err: string }
+  const [saveStatus, setSaveStatus] = useState({});
+
+  // Refs persistentes (no causan re-render)
+  const pendingPatches = useRef({});      // { taskId: { campo: valor, ... } }
+  const debounceTimers = useRef({});      // { taskId: timeoutId }
+  const recentlyModified = useRef({});    // { taskId: timestamp_ms }
+  const tasksRef = useRef(tasks);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+
+  // -----------------------------------------------------------------
+  // SINCRONIZACION CON DATA.JSON (lectura periodica del Sheet)
+  // -----------------------------------------------------------------
   const loadFromRemote = useCallback(async () => {
     setSyncing(true);
     setSyncError(null);
@@ -133,9 +182,19 @@ export default function BoardControlAurumYoDesarrollo() {
       const data = await res.json();
       const remote = Array.isArray(data) ? data : data.tasks;
       if (Array.isArray(remote)) {
-        setTasks(remote);
+        // Proteger tareas modificadas localmente en los ultimos PROTECTION_MS
+        const now = Date.now();
+        const merged = remote.map(remoteTask => {
+          const lastMod = recentlyModified.current[remoteTask.id];
+          if (lastMod && now - lastMod < PROTECTION_MS) {
+            const local = tasksRef.current.find(t => t.id === remoteTask.id);
+            return local || remoteTask;
+          }
+          return remoteTask;
+        });
+        setTasks(merged);
         setLastSync(new Date());
-        try { localStorage.setItem(CACHE_KEY, JSON.stringify(remote)); } catch {}
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(merged)); } catch {}
       }
     } catch (err) {
       setSyncError(err.message || "Error al sincronizar");
@@ -146,10 +205,212 @@ export default function BoardControlAurumYoDesarrollo() {
 
   useEffect(() => {
     loadFromRemote();
-    const id = setInterval(loadFromRemote, REFRESH_MS);
+    const id = setInterval(() => {
+      // Si hay cambios pendientes, no refrescar para no pisar
+      if (Object.keys(pendingPatches.current).length === 0) {
+        loadFromRemote();
+      }
+    }, REFRESH_MS);
     return () => clearInterval(id);
   }, [loadFromRemote]);
 
+  // -----------------------------------------------------------------
+  // ESCRITURA AL SHEET (queue + debounce + flush)
+  // -----------------------------------------------------------------
+  const flushTask = useCallback(async (taskId) => {
+    const patch = pendingPatches.current[taskId];
+    if (!patch || Object.keys(patch).length === 0) return;
+
+    const sheetPatch = patchToSheetFormat(patch);
+    if (Object.keys(sheetPatch).length === 0) {
+      delete pendingPatches.current[taskId];
+      return;
+    }
+
+    // Limpiar antes de enviar (si llega otro cambio en vuelo, se vuelve a encolar)
+    pendingPatches.current[taskId] = {};
+    if (debounceTimers.current[taskId]) {
+      clearTimeout(debounceTimers.current[taskId]);
+      delete debounceTimers.current[taskId];
+    }
+
+    setSaveStatus(prev => ({ ...prev, [taskId]: "saving", [`${taskId}_err`]: null }));
+
+    try {
+      await apiCall("update", { id: taskId, patch: sheetPatch });
+      recentlyModified.current[taskId] = Date.now();
+      setSaveStatus(prev => ({ ...prev, [taskId]: "saved" }));
+      setTimeout(() => {
+        setSaveStatus(prev => {
+          if (prev[taskId] !== "saved") return prev;
+          return { ...prev, [taskId]: "idle" };
+        });
+      }, SAVED_FLASH_MS);
+    } catch (err) {
+      // Devolver al queue para reintento
+      pendingPatches.current[taskId] = { ...sheetPatch, ...(pendingPatches.current[taskId] || {}) };
+      setSaveStatus(prev => ({ ...prev, [taskId]: "error", [`${taskId}_err`]: err.message }));
+    }
+  }, []);
+
+  const queueChange = useCallback((taskId, patch, immediate = false) => {
+    pendingPatches.current[taskId] = { ...(pendingPatches.current[taskId] || {}), ...patch };
+
+    if (immediate) {
+      flushTask(taskId);
+      return;
+    }
+
+    if (debounceTimers.current[taskId]) clearTimeout(debounceTimers.current[taskId]);
+    debounceTimers.current[taskId] = setTimeout(() => flushTask(taskId), DEBOUNCE_MS);
+  }, [flushTask]);
+
+  const flushAll = useCallback(() => {
+    Object.keys(pendingPatches.current).forEach(taskId => flushTask(taskId));
+  }, [flushTask]);
+
+  // Reintento automatico de tareas con error cada 30s
+  useEffect(() => {
+    const id = setInterval(() => {
+      Object.entries(saveStatus).forEach(([taskId, status]) => {
+        if (status === "error" && pendingPatches.current[taskId]) {
+          flushTask(taskId);
+        }
+      });
+    }, 30000);
+    return () => clearInterval(id);
+  }, [saveStatus, flushTask]);
+
+  // Flush al cerrar la ventana / cambiar de tab
+  useEffect(() => {
+    const handler = () => flushAll();
+    window.addEventListener("beforeunload", handler);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushAll();
+    });
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [flushAll]);
+
+  // -----------------------------------------------------------------
+  // OPERACIONES DE TAREAS (con auto-save al Sheet)
+  // -----------------------------------------------------------------
+  function updateTaskField(id, patch, immediate = false) {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch, actualizado: todayStamp() } : t));
+    queueChange(id, patch, immediate);
+  }
+
+  async function addTask() {
+    if (!newTask.proyecto.trim() || !newTask.responsable.trim() || !newTask.actividad.trim()) return;
+    const tempId = makeId();
+    const tempTask = { ...newTask, id: tempId, creado: todayStamp(), actualizado: todayStamp(), links: [] };
+    setTasks(prev => [tempTask, ...prev]);
+    setNewTask(emptyTask());
+    setShowForm(false);
+
+    // Crear en el Sheet
+    setSaveStatus(prev => ({ ...prev, [tempId]: "saving" }));
+    try {
+      const sheetTask = patchToSheetFormat({ ...tempTask, mesCompromiso: tempTask.mesCompromiso || tempTask.mes });
+      const result = await apiCall("create", { task: sheetTask });
+      // Reemplazar id temporal por el id real asignado por el Sheet
+      setTasks(prev => prev.map(t => t.id === tempId ? { ...t, id: result.id } : t));
+      recentlyModified.current[result.id] = Date.now();
+      setSaveStatus(prev => {
+        const next = { ...prev };
+        delete next[tempId];
+        next[result.id] = "saved";
+        return next;
+      });
+      setTimeout(() => {
+        setSaveStatus(prev => {
+          if (prev[result.id] !== "saved") return prev;
+          return { ...prev, [result.id]: "idle" };
+        });
+      }, SAVED_FLASH_MS);
+      setSelectedTaskId(result.id);
+    } catch (err) {
+      setSaveStatus(prev => ({ ...prev, [tempId]: "error", [`${tempId}_err`]: err.message }));
+      setSelectedTaskId(tempId);
+    }
+  }
+
+  async function addLink(taskId) {
+    const url = normalizeUrl(linkDraft.url);
+    if (!url) return;
+    const label = linkDraft.label?.trim() || "Evidencia";
+
+    // Optimistic update local
+    setTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const link = { id: makeId(), label, url, fechaSubida: todayStamp(), responsable: t.responsable };
+      const next = t.estado === "Pendiente" || t.estado === "En proceso" ? "Subido" : t.estado;
+      return { ...t, links: [...(t.links || []), link], estado: next, actualizado: todayStamp() };
+    }));
+    setLinkDraft({ label: "", url: "" });
+
+    setSaveStatus(prev => ({ ...prev, [taskId]: "saving" }));
+    try {
+      await apiCall("addLink", { id: taskId, url, label });
+      // Si el estado cambio, tambien hay que actualizarlo en el Sheet
+      const task = tasksRef.current.find(t => t.id === taskId);
+      if (task && (task.estado === "Subido")) {
+        await apiCall("update", { id: taskId, patch: { estado: "Subido" } });
+      }
+      recentlyModified.current[taskId] = Date.now();
+      setSaveStatus(prev => ({ ...prev, [taskId]: "saved" }));
+      setTimeout(() => {
+        setSaveStatus(prev => prev[taskId] === "saved" ? { ...prev, [taskId]: "idle" } : prev);
+      }, SAVED_FLASH_MS);
+    } catch (err) {
+      setSaveStatus(prev => ({ ...prev, [taskId]: "error", [`${taskId}_err`]: err.message }));
+    }
+  }
+
+  async function removeLink(taskId, linkId) {
+    const task = tasksRef.current.find(t => t.id === taskId);
+    const link = task?.links?.find(l => l.id === linkId);
+    if (!link) return;
+
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, links: (t.links || []).filter(l => l.id !== linkId), actualizado: todayStamp() } : t));
+
+    setSaveStatus(prev => ({ ...prev, [taskId]: "saving" }));
+    try {
+      await apiCall("removeLink", { id: taskId, url: link.url });
+      recentlyModified.current[taskId] = Date.now();
+      setSaveStatus(prev => ({ ...prev, [taskId]: "saved" }));
+      setTimeout(() => {
+        setSaveStatus(prev => prev[taskId] === "saved" ? { ...prev, [taskId]: "idle" } : prev);
+      }, SAVED_FLASH_MS);
+    } catch (err) {
+      setSaveStatus(prev => ({ ...prev, [taskId]: "error", [`${taskId}_err`]: err.message }));
+    }
+  }
+
+  async function deleteTask(taskId) {
+    if (!confirm("¿Eliminar esta tarea del Sheet? Esta accion es definitiva.")) return;
+
+    const backup = tasksRef.current.find(t => t.id === taskId);
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setSelectedTaskId(null);
+
+    try {
+      await apiCall("delete", { id: taskId });
+      delete recentlyModified.current[taskId];
+    } catch (err) {
+      // Restaurar si falla
+      if (backup) setTasks(prev => [backup, ...prev]);
+      alert("No se pudo eliminar del Sheet: " + err.message);
+    }
+  }
+
+  function closeSubboard() {
+    if (selectedTaskId) flushTask(selectedTaskId);
+    setSelectedTaskId(null);
+  }
+
+  // -----------------------------------------------------------------
+  // DERIVADOS
+  // -----------------------------------------------------------------
   const projects = useMemo(() => ["Todos", ...Array.from(new Set(tasks.map(t => t.proyecto).filter(Boolean))).sort()], [tasks]);
   const responsables = useMemo(() => ["Todos", ...Array.from(new Set(tasks.map(t => t.responsable).filter(Boolean))).sort()], [tasks]);
 
@@ -198,44 +459,33 @@ export default function BoardControlAurumYoDesarrollo() {
 
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
 
-  function updateTask(id, patch) {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch, actualizado: todayStamp() } : t));
-  }
-  function addTask() {
-    if (!newTask.proyecto.trim() || !newTask.responsable.trim() || !newTask.actividad.trim()) return;
-    const created = { ...newTask, id: makeId(), creado: todayStamp(), actualizado: todayStamp(), links: [] };
-    setTasks(prev => [created, ...prev]);
-    setNewTask(emptyTask());
-    setShowForm(false);
-    setSelectedTaskId(created.id);
-  }
-  function addLink(taskId) {
-    const url = normalizeUrl(linkDraft.url);
-    if (!url) return;
-    const label = linkDraft.label?.trim() || "Evidencia";
-    setTasks(prev => prev.map(t => {
-      if (t.id !== taskId) return t;
-      const link = { id: makeId(), label, url, fechaSubida: todayStamp(), responsable: t.responsable };
-      const next = t.estado === "Pendiente" || t.estado === "En proceso" ? "Subido" : t.estado;
-      return { ...t, links: [...(t.links || []), link], estado: next, actualizado: todayStamp() };
-    }));
-    setLinkDraft({ label: "", url: "" });
-  }
-  function removeLink(taskId, linkId) {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, links: (t.links || []).filter(l => l.id !== linkId), actualizado: todayStamp() } : t));
-  }
-  function deleteTask(taskId) {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-    setSelectedTaskId(null);
-  }
+  const globalSyncStatus = useMemo(() => {
+    const errors = Object.entries(saveStatus).filter(([k, v]) => v === "error" && !k.endsWith("_err")).length;
+    const saving = Object.entries(saveStatus).filter(([k, v]) => v === "saving" && !k.endsWith("_err")).length;
+    const saved = Object.entries(saveStatus).filter(([k, v]) => v === "saved" && !k.endsWith("_err")).length;
+    if (errors > 0) return { type: "error", text: `${errors} con error · reintentando` };
+    if (saving > 0) return { type: "saving", text: `Guardando ${saving} cambio${saving > 1 ? "s" : ""}...` };
+    if (saved > 0) return { type: "saved", text: "Cambios guardados" };
+    return { type: "idle", text: `Ultima lectura ${timeAgo(lastSync)}` };
+  }, [saveStatus, lastSync]);
 
+  // -----------------------------------------------------------------
+  // RENDER: SUBBOARD DE UNA TAREA
+  // -----------------------------------------------------------------
   if (selectedTask) {
     const palette = personPalette(selectedTask.responsable);
     const tone = projectTone(selectedTask.proyecto);
+    const status = saveStatus[selectedTask.id];
+    const errMsg = saveStatus[`${selectedTask.id}_err`];
+
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900">
         <div className="mx-auto max-w-5xl px-4 py-5">
-          <button onClick={() => setSelectedTaskId(null)} className="btn-ghost mb-4">← Regresar al board</button>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <button onClick={closeSubboard} className="btn-ghost">← Regresar al board</button>
+            <SaveBadge status={status} errorMsg={errMsg} onRetry={() => flushTask(selectedTask.id)} />
+          </div>
+
           <header className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200" style={{ borderTop: `8px solid ${palette.main}` }}>
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
@@ -247,10 +497,10 @@ export default function BoardControlAurumYoDesarrollo() {
                 </div>
                 <h1 className="mt-2 text-2xl font-black tracking-tight">{selectedTask.actividad}</h1>
                 <p className="mt-1 text-sm text-slate-500">{selectedTask.proyecto} · {selectedTask.responsable}</p>
-                <p className="mt-1 text-xs text-amber-700">Las ediciones aquí son temporales. Cambia el Sheet para que persistan.</p>
+                <p className="mt-1 text-xs text-emerald-700">Cada cambio se guarda automaticamente en el Sheet.</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => updateTask(selectedTask.id, { estado: "Terminado" })} className="btn-primary">Marcar terminado</button>
+                <button onClick={() => updateTaskField(selectedTask.id, { estado: "Terminado" }, true)} className="btn-primary">Marcar terminado</button>
                 <button onClick={() => deleteTask(selectedTask.id)} className="btn-danger">Eliminar</button>
               </div>
             </div>
@@ -260,18 +510,45 @@ export default function BoardControlAurumYoDesarrollo() {
             <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
               <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">Datos de la tarea</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <Field label="Empresa"><select className="input" value={selectedTask.empresa} onChange={e => updateTask(selectedTask.id, { empresa: e.target.value })}>{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
-                <Field label="Proyecto"><input className="input" value={selectedTask.proyecto || ""} onChange={e => updateTask(selectedTask.id, { proyecto: e.target.value })} /></Field>
-                <Field label="Responsable"><input className="input" value={selectedTask.responsable || ""} onChange={e => updateTask(selectedTask.id, { responsable: e.target.value })} /></Field>
-                <Field label="Mes compromiso"><select className="input" value={selectedTask.mesCompromiso || selectedTask.mes || "Abril"} onChange={e => updateTask(selectedTask.id, { mesCompromiso: e.target.value })}>{MESES.map(mes => <option key={mes}>{mes}</option>)}</select></Field>
-                <Field label="Fecha compromiso"><input className="input" value={selectedTask.fecha || ""} onChange={e => updateTask(selectedTask.id, { fecha: e.target.value, fechaISO: "" })} /></Field>
-                <Field label="Semana"><input className="input" value={selectedTask.semana || ""} onChange={e => updateTask(selectedTask.id, { semana: e.target.value })} /></Field>
-                <Field label="Estado"><select className="input" value={selectedTask.estado} onChange={e => updateTask(selectedTask.id, { estado: e.target.value })}>{ESTADOS.map(s => <option key={s}>{s}</option>)}</select></Field>
+                <Field label="Empresa">
+                  <select className="input" value={selectedTask.empresa} onChange={e => updateTaskField(selectedTask.id, { empresa: e.target.value }, true)}>
+                    {EMPRESAS.map(e => <option key={e}>{e}</option>)}
+                  </select>
+                </Field>
+                <Field label="Proyecto">
+                  <input className="input" value={selectedTask.proyecto || ""} onChange={e => updateTaskField(selectedTask.id, { proyecto: e.target.value })} />
+                </Field>
+                <Field label="Responsable">
+                  <input className="input" value={selectedTask.responsable || ""} onChange={e => updateTaskField(selectedTask.id, { responsable: e.target.value })} />
+                </Field>
+                <Field label="Mes compromiso">
+                  <select className="input" value={selectedTask.mesCompromiso || selectedTask.mes || "Abril"} onChange={e => updateTaskField(selectedTask.id, { mesCompromiso: e.target.value, mes: e.target.value }, true)}>
+                    {MESES.map(mes => <option key={mes}>{mes}</option>)}
+                  </select>
+                </Field>
+                <Field label="Fecha compromiso">
+                  <input className="input" value={selectedTask.fecha || ""} onChange={e => updateTaskField(selectedTask.id, { fecha: e.target.value })} />
+                </Field>
+                <Field label="Semana">
+                  <input className="input" value={selectedTask.semana || ""} onChange={e => updateTaskField(selectedTask.id, { semana: e.target.value })} />
+                </Field>
+                <Field label="Estado">
+                  <select className="input" value={selectedTask.estado} onChange={e => updateTaskField(selectedTask.id, { estado: e.target.value }, true)}>
+                    {ESTADOS.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </Field>
               </div>
+
               <div className="mt-4 grid gap-3">
-                <Field label="Actividad"><textarea className="input min-h-[80px] resize-none" value={selectedTask.actividad || ""} onChange={e => updateTask(selectedTask.id, { actividad: e.target.value })} /></Field>
-                <Field label="Entregable esperado"><textarea className="input min-h-[80px] resize-none" value={selectedTask.entregable || ""} onChange={e => updateTask(selectedTask.id, { entregable: e.target.value })} /></Field>
-                <Field label="Observaciones"><textarea className="input min-h-[120px] resize-none" value={selectedTask.observaciones || ""} onChange={e => updateTask(selectedTask.id, { observaciones: e.target.value })} placeholder="Notas, pendientes, bloqueos o instrucciones..." /></Field>
+                <Field label="Actividad">
+                  <textarea className="input min-h-[80px] resize-none" value={selectedTask.actividad || ""} onChange={e => updateTaskField(selectedTask.id, { actividad: e.target.value })} />
+                </Field>
+                <Field label="Entregable esperado">
+                  <textarea className="input min-h-[80px] resize-none" value={selectedTask.entregable || ""} onChange={e => updateTaskField(selectedTask.id, { entregable: e.target.value })} />
+                </Field>
+                <Field label="Observaciones">
+                  <textarea className="input min-h-[120px] resize-none" value={selectedTask.observaciones || ""} onChange={e => updateTaskField(selectedTask.id, { observaciones: e.target.value })} placeholder="Notas, pendientes, bloqueos o instrucciones..." />
+                </Field>
               </div>
             </section>
 
@@ -282,8 +559,8 @@ export default function BoardControlAurumYoDesarrollo() {
                   {(selectedTask.links || []).length === 0 && <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-400">Sin archivos registrados.</p>}
                   {(selectedTask.links || []).map(link => (
                     <div key={link.id} className="rounded-2xl border border-slate-200 p-3">
-                      <a href={link.url} target="_blank" rel="noreferrer" className="block text-sm font-bold text-blue-700 hover:underline">{link.label}</a>
-                      <div className="mt-1 text-xs text-slate-400">Subido: {link.fechaSubida}</div>
+                      <a href={link.url} target="_blank" rel="noreferrer" className="block text-sm font-bold text-blue-700 hover:underline break-all">{link.label}</a>
+                      <div className="mt-1 text-xs text-slate-400 break-all">{link.url}</div>
                       <button onClick={() => removeLink(selectedTask.id, link.id)} className="mt-2 text-xs font-bold text-red-500 hover:text-red-700">Eliminar link</button>
                     </div>
                   ))}
@@ -298,13 +575,12 @@ export default function BoardControlAurumYoDesarrollo() {
               <section className="rounded-3xl p-5 text-white shadow-sm" style={{ background: palette.main }}>
                 <h2 className="text-sm font-black uppercase tracking-wide text-white/70">Resumen</h2>
                 <div className="mt-4 space-y-3 text-sm">
+                  <SummaryLine label="ID" value={selectedTask.id} />
                   <SummaryLine label="Empresa" value={selectedTask.empresa} />
                   <SummaryLine label="Proyecto" value={selectedTask.proyecto} />
                   <SummaryLine label="Responsable" value={selectedTask.responsable} />
-                  <SummaryLine label="Mes compromiso" value={selectedTask.mesCompromiso || selectedTask.mes || "—"} />
-                  <SummaryLine label="Días al cierre" value={deadlineText(selectedTask)} />
+                  <SummaryLine label="Dias al cierre" value={deadlineText(selectedTask)} />
                   <SummaryLine label="Evidencias" value={(selectedTask.links || []).length} />
-                  <SummaryLine label="Actualizado" value={selectedTask.actualizado || "—"} />
                 </div>
               </section>
             </aside>
@@ -315,6 +591,9 @@ export default function BoardControlAurumYoDesarrollo() {
     );
   }
 
+  // -----------------------------------------------------------------
+  // RENDER: BOARD PRINCIPAL
+  // -----------------------------------------------------------------
   return (
     <div className="brand-shell min-h-screen text-slate-900">
       <div className="mx-auto max-w-[1760px] px-2.5 py-3">
@@ -327,15 +606,15 @@ export default function BoardControlAurumYoDesarrollo() {
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Aurum Arquitectos · YoDesarrollo</p>
                   <h1 className="mt-0.5 text-lg font-black tracking-tight">Board operativo de actividades</h1>
                   <p className="mt-0.5 text-[11px] font-medium text-slate-500">
-                    Sincroniza desde Google Sheets · {syncing ? "sincronizando..." : `última sync ${timeAgo(lastSync)}`}
-                    {syncError && <span className="ml-1 text-red-500">· error: {syncError}</span>}
+                    <GlobalSyncBadge status={globalSyncStatus} />
+                    {syncError && <span className="ml-1 text-red-500">· error lectura: {syncError}</span>}
                   </p>
                 </div>
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              <button onClick={loadFromRemote} className="btn-secondary" disabled={syncing}>{syncing ? "…" : "↻ Actualizar"}</button>
-              <button onClick={() => setShowForm(v => !v)} className="btn-primary">+ Tarea (local)</button>
+              <button onClick={loadFromRemote} className="btn-secondary" disabled={syncing} title="Forzar lectura desde data.json">{syncing ? "…" : "↻"}</button>
+              <button onClick={() => setShowForm(v => !v)} className="btn-primary">+ Tarea</button>
             </div>
           </div>
         </header>
@@ -352,22 +631,22 @@ export default function BoardControlAurumYoDesarrollo() {
         {showForm && (
           <section className="mb-3 rounded-[1.35rem] bg-white/95 p-3 shadow-sm ring-1 ring-slate-200">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">Nueva tarea (local — agrega al Sheet para que persista)</h2>
+              <h2 className="text-sm font-black uppercase tracking-wide text-slate-500">Nueva tarea (se crea en el Sheet)</h2>
               <button onClick={() => setShowForm(false)} className="btn-ghost">Cerrar</button>
             </div>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
               <Field label="Empresa"><select value={newTask.empresa} onChange={e => setNewTask({ ...newTask, empresa: e.target.value })} className="input">{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
               <Field label="Proyecto"><input className="input" value={newTask.proyecto} onChange={e => setNewTask({ ...newTask, proyecto: e.target.value })} placeholder="Ej. Real Miramar" /></Field>
               <Field label="Responsable"><input className="input" value={newTask.responsable} onChange={e => setNewTask({ ...newTask, responsable: e.target.value })} placeholder="Ej. Mariana" /></Field>
-              <Field label="Mes compromiso"><select className="input" value={newTask.mesCompromiso} onChange={e => setNewTask({ ...newTask, mesCompromiso: e.target.value })}>{MESES.map(mes => <option key={mes}>{mes}</option>)}</select></Field>
-              <Field label="Fecha"><input className="input" value={newTask.fecha} onChange={e => setNewTask({ ...newTask, fecha: e.target.value, fechaISO: "" })} placeholder="Viernes 1" /></Field>
+              <Field label="Mes compromiso"><select className="input" value={newTask.mesCompromiso} onChange={e => setNewTask({ ...newTask, mesCompromiso: e.target.value, mes: e.target.value })}>{MESES.map(mes => <option key={mes}>{mes}</option>)}</select></Field>
+              <Field label="Fecha"><input className="input" value={newTask.fecha} onChange={e => setNewTask({ ...newTask, fecha: e.target.value })} placeholder="Viernes 1" /></Field>
               <Field label="Semana"><input className="input" value={newTask.semana} onChange={e => setNewTask({ ...newTask, semana: e.target.value })} placeholder="3" /></Field>
               <Field label="Actividad"><input className="input" value={newTask.actividad} onChange={e => setNewTask({ ...newTask, actividad: e.target.value })} placeholder="Pendiente concreto" /></Field>
               <Field label="Entregable"><input className="input" value={newTask.entregable} onChange={e => setNewTask({ ...newTask, entregable: e.target.value })} placeholder="PDF, minuta, sheet..." /></Field>
               <Field label="Estado"><select className="input" value={newTask.estado} onChange={e => setNewTask({ ...newTask, estado: e.target.value })}>{ESTADOS.map(s => <option key={s}>{s}</option>)}</select></Field>
             </div>
             <div className="mt-3 flex justify-end">
-              <button onClick={addTask} className="btn-primary">Guardar (solo en esta sesión)</button>
+              <button onClick={addTask} className="btn-primary">Crear y guardar en Sheet</button>
             </div>
           </section>
         )}
@@ -391,14 +670,15 @@ export default function BoardControlAurumYoDesarrollo() {
               expanded={!!expandedPeople[group.responsable]}
               onToggle={() => setExpandedPeople(prev => ({ ...prev, [group.responsable]: !prev[group.responsable] }))}
               onOpen={setSelectedTaskId}
-              onStatus={(id, estado) => updateTask(id, { estado })}
+              onStatus={(id, estado) => updateTaskField(id, { estado }, true)}
+              saveStatus={saveStatus}
             />
           ))}
 
           {groupedByPerson.length === 0 && (
             <div className="col-span-full rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-400">
               {tasks.length === 0
-                ? (syncError ? `No pude leer data.json (${syncError}). Asegúrate de que el script ya se ejecutó.` : "Cargando tareas desde el Sheet...")
+                ? (syncError ? `No pude leer data.json (${syncError})` : "Cargando tareas desde el Sheet...")
                 : "No hay tareas con los filtros actuales."}
             </div>
           )}
@@ -409,7 +689,10 @@ export default function BoardControlAurumYoDesarrollo() {
   );
 }
 
-function PersonVisualCard({ responsable, tasks, expanded, onToggle, onOpen, onStatus }) {
+// ===================================================================
+// COMPONENTES AUXILIARES
+// ===================================================================
+function PersonVisualCard({ responsable, tasks, expanded, onToggle, onOpen, onStatus, saveStatus }) {
   const palette = personPalette(responsable);
   const total = tasks.length;
   const done = tasks.filter(t => t.estado === "Terminado").length;
@@ -437,17 +720,17 @@ function PersonVisualCard({ responsable, tasks, expanded, onToggle, onOpen, onSt
       </div>
       <div className="space-y-1 p-2">
         {visibleTasks.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">Sin pendientes urgentes.</div>}
-        {visibleTasks.map(task => <VisualTaskRow key={task.id} task={task} palette={palette} onOpen={onOpen} onStatus={onStatus} />)}
+        {visibleTasks.map(task => <VisualTaskRow key={task.id} task={task} palette={palette} onOpen={onOpen} onStatus={onStatus} saveStatus={saveStatus[task.id]} />)}
       </div>
       <div className="flex items-center justify-between border-t border-slate-100 px-2 py-1.5">
-        <button onClick={onToggle} className="btn-ghost">{expanded ? "Ver solo 3" : `Ver más (${Math.max(total - visibleTasks.length, 0)})`}</button>
+        <button onClick={onToggle} className="btn-ghost">{expanded ? "Ver solo 3" : `Ver mas (${Math.max(total - visibleTasks.length, 0)})`}</button>
         <span className="text-[10px] font-bold text-slate-400">Click = detalle</span>
       </div>
     </section>
   );
 }
 
-function VisualTaskRow({ task, palette, onOpen, onStatus }) {
+function VisualTaskRow({ task, palette, onOpen, onStatus, saveStatus }) {
   const tone = projectTone(task.proyecto);
   const hasLinks = (task.links?.length || 0) > 0;
   return (
@@ -463,6 +746,9 @@ function VisualTaskRow({ task, palette, onOpen, onStatus }) {
       <div className="mb-1 flex items-start justify-between gap-1">
         <span className="max-w-[92px] truncate rounded-full px-1.5 py-0.5 text-[8px] font-black" style={{ background: tone.chip, color: palette.text }}>{task.proyecto}</span>
         <div className="flex items-center gap-1">
+          {saveStatus === "saving" && <span className="save-dot save-dot-saving" title="Guardando">●</span>}
+          {saveStatus === "saved" && <span className="save-dot save-dot-saved" title="Guardado">✓</span>}
+          {saveStatus === "error" && <span className="save-dot save-dot-error" title="Error al guardar">!</span>}
           {hasLinks && <span className="link-evidence-dot" title="Tiene link de evidencia">●</span>}
           <span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ring-1 ${statusTone(task.estado)}`}>{task.estado}</span>
         </div>
@@ -481,11 +767,24 @@ function VisualTaskRow({ task, palette, onOpen, onStatus }) {
   );
 }
 
+function SaveBadge({ status, errorMsg, onRetry }) {
+  if (status === "saving") return <span className="badge-saving">⟳ Guardando...</span>;
+  if (status === "saved") return <span className="badge-saved">✓ Guardado</span>;
+  if (status === "error") return (
+    <button onClick={onRetry} className="badge-error" title={errorMsg || ""}>! Error · click para reintentar</button>
+  );
+  return <span className="badge-idle">Listo</span>;
+}
+
+function GlobalSyncBadge({ status }) {
+  return <span className={`global-sync global-sync-${status.type}`}>{status.text}</span>;
+}
+
 function DeadlineBadge({ task, compact = false }) {
   const d = daysUntil(task);
   const tone = d == null ? "deadline-gray" : d < 0 ? "deadline-red" : "deadline-green";
   const label = d == null ? "Sin fecha" : d === 0 ? "Hoy" : d > 0 ? `+${d}` : String(d);
-  return <span className={`deadline-badge ${compact ? "deadline-compact" : ""} ${tone}`} title={`Días al cierre: ${deadlineText(task)}`}>{label}</span>;
+  return <span className={`deadline-badge ${compact ? "deadline-compact" : ""} ${tone}`} title={`Dias al cierre: ${deadlineText(task)}`}>{label}</span>;
 }
 function MiniMetric({ label, value }) {
   return (
@@ -545,6 +844,20 @@ function GlobalStyles() {
       .person-card { min-height: 270px; }
       @media (max-width: 1120px) { .responsables-grid { overflow-x: auto; grid-template-columns: repeat(4, minmax(230px, 1fr)); padding-bottom: 0.25rem; } }
       @media (min-width: 1400px) { .person-card { min-height: 280px; } }
+      .save-dot { display: inline-grid; place-items: center; width: 0.85rem; height: 0.85rem; border-radius: 999px; font-size: 0.55rem; font-weight: 900; line-height: 1; }
+      .save-dot-saving { background: rgb(254 243 199); color: rgb(120 53 15); animation: pulse-saving 1s ease-in-out infinite; }
+      .save-dot-saved { background: rgb(220 252 231); color: rgb(22 101 52); }
+      .save-dot-error { background: rgb(254 226 226); color: rgb(153 27 27); }
+      @keyframes pulse-saving { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+      .badge-saving { display: inline-flex; align-items: center; border-radius: 999px; background: rgb(254 243 199); color: rgb(120 53 15); padding: 0.3rem 0.7rem; font-size: 0.7rem; font-weight: 900; }
+      .badge-saved { display: inline-flex; align-items: center; border-radius: 999px; background: rgb(220 252 231); color: rgb(22 101 52); padding: 0.3rem 0.7rem; font-size: 0.7rem; font-weight: 900; }
+      .badge-error { display: inline-flex; align-items: center; border-radius: 999px; background: rgb(254 226 226); color: rgb(153 27 27); padding: 0.3rem 0.7rem; font-size: 0.7rem; font-weight: 900; cursor: pointer; }
+      .badge-idle { display: inline-flex; align-items: center; border-radius: 999px; background: rgb(241 245 249); color: rgb(100 116 139); padding: 0.3rem 0.7rem; font-size: 0.7rem; font-weight: 900; }
+      .global-sync { display: inline-flex; align-items: center; gap: 0.3rem; }
+      .global-sync-saving { color: rgb(120 53 15); }
+      .global-sync-saved { color: rgb(22 101 52); }
+      .global-sync-error { color: rgb(153 27 27); }
+      .global-sync-idle { color: rgb(100 116 139); }
     `}</style>
   );
 }
