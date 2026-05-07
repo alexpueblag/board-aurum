@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "exportedAt": "2026-05-07T08:40:02.982575",
+  "exportedAt": "2026-05-07T08:50:03.747072",
   "source": "google-sheets",
   "tasks": [
     {
@@ -31,7 +31,7 @@
       "entregable": "Confirmación de Alta",
       "fecha": "Lunes 13",
       "fechaISO": "",
-      "estado": "Pendiente",
+      "estado": "En proceso",
       "observaciones": "",
       "links": []
     },
@@ -228,22 +228,6 @@
       "links": []
     },
     {
-      "id": "A-015",
-      "mes": "Abril",
-      "mesCompromiso": "Abril",
-      "empresa": "Aurum Arquitectos",
-      "proyecto": "RNM",
-      "responsable": "Alma",
-      "semana": "3",
-      "actividad": "Seguimiento expediente CIDUE",
-      "entregable": "Reporte de seguimiento",
-      "fecha": "Viernes 17",
-      "fechaISO": "",
-      "estado": "Pendiente",
-      "observaciones": "",
-      "links": []
-    },
-    {
       "id": "A-016",
       "mes": "Abril",
       "mesCompromiso": "Abril",
@@ -255,9 +239,24 @@
       "entregable": "SKP",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "Pendiente",
+      "estado": "Terminado",
       "observaciones": "",
-      "links": []
+      "links": [
+        {
+          "id": "link-1",
+          "label": "Evidencia 1",
+          "url": "https://drive.google.com/file/d/1xZwRbG2W6D3zztb6Dz-GAI9Lxv_7sJzO/view?usp=drive_link",
+          "fechaSubida": "2026-05-07",
+          "responsable": ""
+        },
+        {
+          "id": "link-2",
+          "label": "Evidencia 2",
+          "url": "https://drive.google.com/file/d/1QQk8EmHooBiKaF8EoMttAvI7PyqEv2Qv/view?usp=drive_link",
+          "fechaSubida": "2026-05-07",
+          "responsable": ""
+        }
+      ]
     },
     {
       "id": "A-017",
@@ -287,7 +286,7 @@
       "entregable": "Viaje a Guaymas",
       "fecha": "Martes 14",
       "fechaISO": "",
-      "estado": "Pendiente",
+      "estado": "En proceso",
       "observaciones": "",
       "links": []
     },
