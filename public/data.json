@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "exportedAt": "2026-05-06T16:59:20.707016",
+  "exportedAt": "2026-05-06T17:06:51.135495",
   "source": "google-sheets",
   "tasks": [
     {
@@ -15,7 +15,7 @@
       "entregable": "Entrega de documentos",
       "fecha": "Martes 14",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -31,7 +31,7 @@
       "entregable": "Confirmación de Alta",
       "fecha": "Lunes 13",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -47,7 +47,7 @@
       "entregable": "Google Sheets",
       "fecha": "Miércoles 15",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -63,7 +63,7 @@
       "entregable": "Entrevista",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -79,7 +79,7 @@
       "entregable": "Monto",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -95,7 +95,7 @@
       "entregable": "Listado",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -111,7 +111,7 @@
       "entregable": "Google Sheets",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -127,7 +127,7 @@
       "entregable": "Google Sheets",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -143,7 +143,7 @@
       "entregable": "Listado",
       "fecha": "Lunes 13",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -159,7 +159,7 @@
       "entregable": "Minuta",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -175,7 +175,7 @@
       "entregable": "Minuta",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -191,7 +191,7 @@
       "entregable": "Reporte de promoción",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -207,7 +207,7 @@
       "entregable": "Planos finales",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -223,7 +223,7 @@
       "entregable": "Planos finales",
       "fecha": "Jueves 16",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -239,7 +239,7 @@
       "entregable": "Reporte de seguimiento",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -255,7 +255,7 @@
       "entregable": "SKP",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -271,7 +271,7 @@
       "entregable": "Plano de detalles",
       "fecha": "Viernes 20",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -287,7 +287,7 @@
       "entregable": "Viaje a Guaymas",
       "fecha": "Martes 14",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -303,7 +303,7 @@
       "entregable": "Presentación final",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -319,7 +319,7 @@
       "entregable": "Expediente completo",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -335,7 +335,7 @@
       "entregable": "Contenido",
       "fecha": "Sábado 18",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -351,7 +351,7 @@
       "entregable": "Contenido",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -367,7 +367,7 @@
       "entregable": "Contenido",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     },
@@ -383,7 +383,7 @@
       "entregable": "Contenido",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Pendiente",
       "observaciones": "",
       "links": []
     }
