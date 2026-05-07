@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "exportedAt": "2026-05-07T08:50:03.747072",
+  "exportedAt": "2026-05-07T09:00:03.767879",
   "source": "google-sheets",
   "tasks": [
     {
@@ -350,7 +350,7 @@
       "entregable": "Contenido",
       "fecha": "Viernes 17",
       "fechaISO": "",
-      "estado": "Pendiente",
+      "estado": "Terminado",
       "observaciones": "",
       "links": []
     },
@@ -638,7 +638,7 @@
       "entregable": "Contenido",
       "fecha": "Sábado 25",
       "fechaISO": "",
-      "estado": "Pendiente",
+      "estado": "En proceso",
       "observaciones": "",
       "links": []
     },
