@@ -161,6 +161,22 @@ export default function BoardControlAurumYoDesarrollo() {
   // Estado de save por tarea: { taskId: 'idle'|'saving'|'saved'|'error', taskId_err: string }
   const [saveStatus, setSaveStatus] = useState({});
 
+  // Modal de confirmacion: { open, title, message, confirmLabel, onConfirm }
+  const [confirmDialog, setConfirmDialog] = useState({ open: false });
+  const askConfirm = useCallback((opts) => {
+    return new Promise((resolve) => {
+      setConfirmDialog({
+        open: true,
+        title: opts.title || "¿Estas seguro?",
+        message: opts.message || "Esta accion no se puede deshacer.",
+        confirmLabel: opts.confirmLabel || "Eliminar",
+        danger: opts.danger !== false,
+        onConfirm: () => { setConfirmDialog({ open: false }); resolve(true); },
+        onCancel: () => { setConfirmDialog({ open: false }); resolve(false); },
+      });
+    });
+  }, []);
+
   // Refs persistentes (no causan re-render)
   const pendingPatches = useRef({});      // { taskId: { campo: valor, ... } }
   const debounceTimers = useRef({});      // { taskId: timeoutId }
@@ -387,9 +403,16 @@ export default function BoardControlAurumYoDesarrollo() {
   }
 
   async function deleteTask(taskId) {
-    if (!confirm("¿Eliminar esta tarea del Sheet? Esta accion es definitiva.")) return;
+    const task = tasksRef.current.find(t => t.id === taskId);
+    const ok = await askConfirm({
+      title: "Eliminar tarea",
+      message: `Vas a eliminar la tarea "${task?.actividad || taskId}" del Sheet. Esta accion es definitiva y no se puede deshacer.`,
+      confirmLabel: "Si, eliminar",
+      danger: true,
+    });
+    if (!ok) return;
 
-    const backup = tasksRef.current.find(t => t.id === taskId);
+    const backup = task;
     setTasks(prev => prev.filter(t => t.id !== taskId));
     setSelectedTaskId(null);
 
@@ -401,6 +424,19 @@ export default function BoardControlAurumYoDesarrollo() {
       if (backup) setTasks(prev => [backup, ...prev]);
       alert("No se pudo eliminar del Sheet: " + err.message);
     }
+  }
+
+  async function removeLinkConfirm(taskId, linkId) {
+    const task = tasksRef.current.find(t => t.id === taskId);
+    const link = task?.links?.find(l => l.id === linkId);
+    const ok = await askConfirm({
+      title: "Eliminar evidencia",
+      message: `Vas a quitar el link "${link?.label || ""}" de esta tarea. Esta accion es definitiva.`,
+      confirmLabel: "Si, eliminar",
+      danger: true,
+    });
+    if (!ok) return;
+    removeLink(taskId, linkId);
   }
 
   function closeSubboard() {
@@ -561,7 +597,7 @@ export default function BoardControlAurumYoDesarrollo() {
                     <div key={link.id} className="rounded-2xl border border-slate-200 p-3">
                       <a href={link.url} target="_blank" rel="noreferrer" className="block text-sm font-bold text-blue-700 hover:underline break-all">{link.label}</a>
                       <div className="mt-1 text-xs text-slate-400 break-all">{link.url}</div>
-                      <button onClick={() => removeLink(selectedTask.id, link.id)} className="mt-2 text-xs font-bold text-red-500 hover:text-red-700">Eliminar link</button>
+                      <button onClick={() => removeLinkConfirm(selectedTask.id, link.id)} className="mt-2 text-xs font-bold text-red-500 hover:text-red-700">Eliminar link</button>
                     </div>
                   ))}
                 </div>
@@ -587,6 +623,7 @@ export default function BoardControlAurumYoDesarrollo() {
           </main>
         </div>
         <GlobalStyles />
+        <ConfirmModal dialog={confirmDialog} />
       </div>
     );
   }
@@ -685,6 +722,26 @@ export default function BoardControlAurumYoDesarrollo() {
         </main>
       </div>
       <GlobalStyles />
+      <ConfirmModal dialog={confirmDialog} />
+    </div>
+  );
+}
+
+function ConfirmModal({ dialog }) {
+  if (!dialog?.open) return null;
+  return (
+    <div className="confirm-overlay" onClick={dialog.onCancel}>
+      <div className="confirm-box" onClick={e => e.stopPropagation()}>
+        <div className="confirm-icon">⚠</div>
+        <h3 className="confirm-title">{dialog.title}</h3>
+        <p className="confirm-msg">{dialog.message}</p>
+        <div className="confirm-actions">
+          <button onClick={dialog.onCancel} className="confirm-btn-cancel">Cancelar</button>
+          <button onClick={dialog.onConfirm} className={dialog.danger ? "confirm-btn-danger" : "confirm-btn-primary"}>
+            {dialog.confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -858,6 +915,20 @@ function GlobalStyles() {
       .global-sync-saved { color: rgb(22 101 52); }
       .global-sync-error { color: rgb(153 27 27); }
       .global-sync-idle { color: rgb(100 116 139); }
+      .confirm-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(4px); z-index: 9999; display: grid; place-items: center; padding: 1rem; animation: confirm-fade 0.15s ease-out; }
+      .confirm-box { background: white; border-radius: 1.25rem; padding: 1.75rem; max-width: 420px; width: 100%; box-shadow: 0 25px 60px rgba(0,0,0,0.25); animation: confirm-pop 0.18s ease-out; }
+      .confirm-icon { font-size: 2.5rem; text-align: center; margin-bottom: 0.5rem; }
+      .confirm-title { font-size: 1.15rem; font-weight: 900; text-align: center; color: rgb(15 23 42); margin: 0 0 0.5rem; }
+      .confirm-msg { font-size: 0.85rem; color: rgb(71 85 105); text-align: center; margin: 0 0 1.25rem; line-height: 1.45; }
+      .confirm-actions { display: flex; gap: 0.5rem; justify-content: center; }
+      .confirm-btn-cancel { padding: 0.55rem 1.1rem; border-radius: 999px; background: rgb(241 245 249); color: rgb(51 65 85); font-weight: 800; font-size: 0.8rem; }
+      .confirm-btn-cancel:hover { background: rgb(226 232 240); }
+      .confirm-btn-danger { padding: 0.55rem 1.1rem; border-radius: 999px; background: rgb(220 38 38); color: white; font-weight: 800; font-size: 0.8rem; }
+      .confirm-btn-danger:hover { background: rgb(185 28 28); }
+      .confirm-btn-primary { padding: 0.55rem 1.1rem; border-radius: 999px; background: rgb(15 23 42); color: white; font-weight: 800; font-size: 0.8rem; }
+      .confirm-btn-primary:hover { background: rgb(51 65 85); }
+      @keyframes confirm-fade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes confirm-pop { from { opacity: 0; transform: scale(0.95) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
     `}</style>
   );
 }

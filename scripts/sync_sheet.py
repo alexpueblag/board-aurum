@@ -45,17 +45,29 @@ def fetch_csv():
 
 
 def parse_links(value):
+    """
+    Lee la columna 'links' del Sheet. Soporta dos formatos:
+      Nuevo: "Etiqueta ~ url|Otra etiqueta ~ url"
+      Viejo: "url|url" (queda como label generico "Evidencia N")
+    """
     if not value:
         return []
-    raw = value.replace("\n", "|").replace(";", "|")
+    raw = value.replace(";", "|")
     parts = [p.strip() for p in raw.split("|") if p.strip()]
     out = []
-    for i, url in enumerate(parts, 1):
+    for i, entry in enumerate(parts, 1):
+        sep = entry.find(" ~ ")
+        if sep != -1:
+            label = entry[:sep].strip() or f"Evidencia {i}"
+            url = entry[sep + 3:].strip()
+        else:
+            label = f"Evidencia {i}"
+            url = entry.strip()
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
         out.append({
             "id": f"link-{i}",
-            "label": f"Evidencia {i}",
+            "label": label,
             "url": url,
             "fechaSubida": datetime.now().strftime("%Y-%m-%d"),
             "responsable": "",
