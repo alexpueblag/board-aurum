@@ -1,22 +1,7 @@
 #!/usr/bin/env python3
-"""
-sync_sheet.py
-Lee un Google Sheet publico (CSV), lo convierte al formato del board y
-escribe public/data.json. Si hay cambios, hace commit + push.
+"""sync_sheet.py v3 — lee el Sheet, parsea evidencias con etiqueta, escribe data.json"""
 
-Uso:
-  python3 scripts/sync_sheet.py            # sync + git commit/push
-  python3 scripts/sync_sheet.py --no-git   # solo escribe data.json (para CI)
-"""
-
-import os
-import sys
-import csv
-import json
-import io
-import subprocess
-import urllib.request
-import urllib.error
+import os, sys, csv, json, io, subprocess, urllib.request, urllib.error
 from pathlib import Path
 from datetime import datetime
 
@@ -36,8 +21,8 @@ def log(msg):
 
 
 def fetch_csv():
-    log(f"Descargando CSV: {CSV_URL[:80]}...")
-    req = urllib.request.Request(CSV_URL, headers={"User-Agent": "board-sync/1.0"})
+    log(f"Descargando: {CSV_URL[:80]}...")
+    req = urllib.request.Request(CSV_URL, headers={"User-Agent": "board-sync/3.0"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         if resp.status != 200:
             raise RuntimeError(f"HTTP {resp.status}")
@@ -45,11 +30,6 @@ def fetch_csv():
 
 
 def parse_links(value):
-    """
-    Lee la columna 'links' del Sheet. Soporta dos formatos:
-      Nuevo: "Etiqueta ~ url|Otra etiqueta ~ url"
-      Viejo: "url|url" (queda como label generico "Evidencia N")
-    """
     if not value:
         return []
     raw = value.replace(";", "|")
@@ -78,14 +58,12 @@ def parse_links(value):
 def csv_to_tasks(csv_text):
     reader = csv.DictReader(io.StringIO(csv_text))
     headers = [h.strip() for h in (reader.fieldnames or [])]
-    log(f"Columnas detectadas: {headers}")
-
+    log(f"Columnas: {headers}")
     tasks = []
     for i, row in enumerate(reader, 1):
         clean = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items() if k}
         if not clean.get("actividad") and not clean.get("proyecto"):
             continue
-
         task = {
             "id": clean.get("id") or f"S-{i:03d}",
             "mes": clean.get("mes") or "",
@@ -97,31 +75,28 @@ def csv_to_tasks(csv_text):
             "actividad": clean.get("actividad") or "",
             "entregable": clean.get("entregable") or "",
             "fecha": clean.get("fecha") or "",
-            "fechaISO": "",
             "estado": clean.get("estado") or "Pendiente",
+            "prioridad": clean.get("prioridad") or "Media",
             "observaciones": clean.get("observaciones") or "",
             "links": parse_links(clean.get("links", "")),
         }
         tasks.append(task)
-
-    log(f"Tareas parseadas: {len(tasks)}")
+    log(f"Tareas: {len(tasks)}")
     return tasks
 
 
 def write_data_json(tasks):
     DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-
     if DATA_PATH.exists():
         try:
             old = json.loads(DATA_PATH.read_text(encoding="utf-8"))
             if old.get("tasks") == tasks:
-                log("Sin cambios reales en tareas. Skip escritura.")
+                log("Sin cambios.")
                 return False
         except Exception:
             pass
-
     payload = {
-        "version": 4,
+        "version": 5,
         "exportedAt": datetime.now().isoformat(),
         "source": "google-sheets",
         "tasks": tasks,
@@ -134,42 +109,36 @@ def write_data_json(tasks):
 def git_commit_and_push():
     def run(cmd):
         return subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
-
     status = run(["git", "status", "--porcelain", "public/data.json"])
     if not status.stdout.strip():
-        log("Git sin cambios. Skip commit.")
         return
-
-    log("Cambios detectados. Commit + push...")
+    log("Commit + push...")
     run(["git", "add", "public/data.json"])
-    msg = f"sync: actualizacion automatica {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    msg = f"sync: auto {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     commit = run(["git", "commit", "-m", msg])
     if commit.returncode != 0:
         log(f"Error commit: {commit.stderr.strip()}")
         return
-
     push = run(["git", "push", "origin", "main"])
     if push.returncode != 0:
         log(f"Error push: {push.stderr.strip()}")
         return
-    log("Push completado OK")
+    log("Push OK")
 
 
 def main():
     no_git = "--no-git" in sys.argv
-
     try:
         csv_text = fetch_csv()
         tasks = csv_to_tasks(csv_text)
         if not tasks:
-            log("ADVERTENCIA: 0 tareas parseadas. Aborto para no borrar datos.")
+            log("0 tareas. Aborto.")
             sys.exit(2)
-        changed = write_data_json(tasks)
-        if changed and not no_git:
+        if write_data_json(tasks) and not no_git:
             git_commit_and_push()
         log("Sync OK")
     except urllib.error.HTTPError as e:
-        log(f"HTTPError {e.code}: el Sheet debe estar publico.")
+        log(f"HTTP {e.code}: el Sheet debe estar publico.")
         sys.exit(3)
     except Exception as e:
         log(f"ERROR: {type(e).__name__}: {e}")
