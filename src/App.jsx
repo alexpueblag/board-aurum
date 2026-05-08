@@ -210,12 +210,23 @@ export default function Board() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const base = import.meta.env.BASE_URL || "/";
-      const url = `${base}data.json?t=${Date.now()}`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const remote = Array.isArray(data) ? data : data.tasks;
+      let remote = null;
+      // 1. Lectura en vivo del Apps Script (no espera al cron)
+      try {
+        const result = await apiCall("getAll");
+        if (Array.isArray(result.tasks)) remote = result.tasks;
+      } catch (apiErr) {
+        console.warn("[loadFromRemote] Apps Script no respondió, fallback a data.json:", apiErr.message);
+      }
+      // 2. Fallback a data.json si Apps Script falló
+      if (!remote) {
+        const base = import.meta.env.BASE_URL || "/";
+        const url = `${base}data.json?t=${Date.now()}`;
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        remote = Array.isArray(data) ? data : data.tasks;
+      }
       if (Array.isArray(remote)) {
         const now = Date.now();
         const merged = remote.map(rt => {
