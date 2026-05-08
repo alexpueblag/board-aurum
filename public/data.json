@@ -1,6 +1,6 @@
 {
-  "version": 4,
-  "exportedAt": "2026-05-07T15:20:34.747917",
+  "version": 5,
+  "exportedAt": "2026-05-07T21:40:04.508243",
   "source": "google-sheets",
   "tasks": [
     {
@@ -14,8 +14,8 @@
       "actividad": "Seguimiento expediente promotora",
       "entregable": "Entrega de documentos",
       "fecha": "Martes 14",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -30,8 +30,8 @@
       "actividad": "REPSE",
       "entregable": "Confirmación de Alta",
       "fecha": "Lunes 13",
-      "fechaISO": "",
       "estado": "En proceso",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -46,8 +46,8 @@
       "actividad": "Conseguir convenios con proveedores",
       "entregable": "Google Sheets",
       "fecha": "Miércoles 15",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -62,8 +62,8 @@
       "actividad": "Entrevista supervisor",
       "entregable": "Entrevista",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -78,8 +78,8 @@
       "actividad": "Confirmar monto de anticipo",
       "entregable": "Monto",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -94,8 +94,8 @@
       "actividad": "Identificar extras iniciales",
       "entregable": "Listado",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Terminado",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -110,8 +110,8 @@
       "actividad": "Streamlining archivo con compras",
       "entregable": "Google Sheets",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -126,8 +126,8 @@
       "actividad": "Revisión de precios mercado/proveedor",
       "entregable": "Google Sheets",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -142,8 +142,8 @@
       "actividad": "Hacer listado de inversionistas",
       "entregable": "Listado",
       "fecha": "Lunes 13",
-      "fechaISO": "",
       "estado": "Terminado",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -158,8 +158,8 @@
       "actividad": "Cita con inversionista 1",
       "entregable": "Minuta",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -174,8 +174,8 @@
       "actividad": "Cita con inversionista 2",
       "entregable": "Minuta",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -190,8 +190,8 @@
       "actividad": "Seguimiento de asesores semana 3",
       "entregable": "Reporte de promoción",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -206,8 +206,8 @@
       "actividad": "Coordinación con estructurista",
       "entregable": "Planos finales",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -222,8 +222,8 @@
       "actividad": "Modificaciones de CIDUE",
       "entregable": "Planos finales",
       "fecha": "Jueves 16",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -238,8 +238,8 @@
       "actividad": "Sketch para render escalera",
       "entregable": "SKP",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Terminado",
+      "prioridad": "Media",
       "observaciones": "",
       "links": [
         {
@@ -269,8 +269,8 @@
       "actividad": "Plano de detalles",
       "entregable": "Plano de detalles",
       "fecha": "Viernes 20",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -285,8 +285,8 @@
       "actividad": "Subdivisión Guaymas",
       "entregable": "Viaje a Guaymas",
       "fecha": "Martes 14",
-      "fechaISO": "",
-      "estado": "En proceso",
+      "estado": "Subido",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -301,8 +301,8 @@
       "actividad": "Redefinir financiamientos",
       "entregable": "Presentación final",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -317,8 +317,8 @@
       "actividad": "Documentación MIA",
       "entregable": "Expediente completo",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -333,8 +333,8 @@
       "actividad": "Contenido mayo 1/2",
       "entregable": "Contenido",
       "fecha": "Sábado 18",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -349,8 +349,8 @@
       "actividad": "Contenido de abril redes Aurum",
       "entregable": "Contenido",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Terminado",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -365,8 +365,8 @@
       "actividad": "Posts promoción cuestionario",
       "entregable": "Contenido",
       "fecha": "Viernes 17",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -381,8 +381,8 @@
       "actividad": "Reunión con asesor inmobiliario Guaymas",
       "entregable": "Minuta",
       "fecha": "Miércoles 15",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -397,8 +397,8 @@
       "actividad": "Validar corrida financiera real",
       "entregable": "Corrida Financiera",
       "fecha": "Jueves 23",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -413,8 +413,8 @@
       "actividad": "Firma de contrato",
       "entregable": "Contrato firmado",
       "fecha": "Viernes 24",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -429,8 +429,8 @@
       "actividad": "Cita con inversionista 3",
       "entregable": "Minuta",
       "fecha": "Viernes 24",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -445,8 +445,8 @@
       "actividad": "Cita con inversionista 4",
       "entregable": "Minuta",
       "fecha": "Viernes 24",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -461,8 +461,8 @@
       "actividad": "Reunión con asesores PLD",
       "entregable": "Minuta",
       "fecha": "Viernes 24",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -477,8 +477,8 @@
       "actividad": "Ingreso de trámite SEMARNAT",
       "entregable": "Comprobante",
       "fecha": "Viernes 24",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -493,8 +493,8 @@
       "actividad": "Recibir anticipo",
       "entregable": "Depósito",
       "fecha": "Jueves 30",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -509,8 +509,8 @@
       "actividad": "Cita con inversionista 5",
       "entregable": "Minuta",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -525,8 +525,8 @@
       "actividad": "Cita con inversionista 6",
       "entregable": "Minuta",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -541,8 +541,8 @@
       "actividad": "Confirmación de inversión parcial",
       "entregable": "Ingreso",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -557,8 +557,8 @@
       "actividad": "Generar oficio y aceptación de oferta",
       "entregable": "Documentos",
       "fecha": "Viernes 24",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -573,8 +573,8 @@
       "actividad": "PROFECO revisión de contratos",
       "entregable": "Promesa y compraventa",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -589,8 +589,8 @@
       "actividad": "Reglamento de condominio",
       "entregable": "Documento",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -605,8 +605,8 @@
       "actividad": "Reglamento de construcción",
       "entregable": "Documento",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -621,8 +621,8 @@
       "actividad": "Contenido Mayo 2/2",
       "entregable": "Contenido",
       "fecha": "Sábado 25",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -637,8 +637,8 @@
       "actividad": "Contenido de mayo redes Aurum",
       "entregable": "Contenido",
       "fecha": "Sábado 25",
-      "fechaISO": "",
       "estado": "En proceso",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -653,8 +653,8 @@
       "actividad": "Agregar agenda",
       "entregable": "Agenda",
       "fecha": "Sábado 25",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -669,8 +669,8 @@
       "actividad": "Mandar por contenedor",
       "entregable": "Contenedor en sitio",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -685,8 +685,8 @@
       "actividad": "Abrir Instagram y Facebook",
       "entregable": "Cuentas abiertas",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -701,8 +701,8 @@
       "actividad": "Diseño interior PB área pública",
       "entregable": "Moodboards de área",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -717,8 +717,8 @@
       "actividad": "Presupuesto acabados Alysa",
       "entregable": "Google Sheets",
       "fecha": "Viernes 24",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -733,8 +733,8 @@
       "actividad": "Plano de diseño de interiores",
       "entregable": "Planos de cocina/closets",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -749,8 +749,8 @@
       "actividad": "Cotizar artículos extras iniciales",
       "entregable": "Cotización y presupuesto",
       "fecha": "Martes 21",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -765,8 +765,8 @@
       "actividad": "Seguimiento de asesores semana 4",
       "entregable": "Reporte de promoción",
       "fecha": "Viernes 24",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -781,8 +781,8 @@
       "actividad": "Seguimiento de asesores semana 5",
       "entregable": "Reporte de promoción",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     },
@@ -797,8 +797,8 @@
       "actividad": "Seguimiento CIDUE",
       "entregable": "Reporte de seguimiento",
       "fecha": "Viernes 1",
-      "fechaISO": "",
       "estado": "Pendiente",
+      "prioridad": "Media",
       "observaciones": "",
       "links": []
     }
