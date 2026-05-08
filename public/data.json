@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "exportedAt": "2026-05-08T08:20:03.201054",
+  "exportedAt": "2026-05-08T08:30:08.769924",
   "source": "google-sheets",
   "tasks": [
     {
@@ -158,7 +158,7 @@
       "actividad": "Cita con inversionista 1",
       "entregable": "Minuta",
       "fecha": "Viernes 17",
-      "estado": "Terminado",
+      "estado": "En proceso",
       "prioridad": "Media",
       "observaciones": "",
       "links": []
@@ -240,18 +240,18 @@
       "fecha": "Viernes 17",
       "estado": "Terminado",
       "prioridad": "Media",
-      "observaciones": "",
+      "observaciones": "El cliente mencionó que todo estaba correto y que le gustó, sayri dijo en el grupo qe tenía unas ideas locochonas para los pasamanos en las escaleras. Comento conlos clientes que luego se los presentaría",
       "links": [
         {
           "id": "link-1",
-          "label": "Evidencia 1",
+          "label": "Evidencia",
           "url": "https://drive.google.com/file/d/1xZwRbG2W6D3zztb6Dz-GAI9Lxv_7sJzO/view?usp=drive_link",
           "fechaSubida": "2026-05-08",
           "responsable": ""
         },
         {
           "id": "link-2",
-          "label": "Evidencia 2",
+          "label": "Evidencia",
           "url": "https://drive.google.com/file/d/1QQk8EmHooBiKaF8EoMttAvI7PyqEv2Qv/view?usp=drive_link",
           "fechaSubida": "2026-05-08",
           "responsable": ""
