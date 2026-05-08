@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "exportedAt": "2026-05-07T21:40:04.508243",
+  "exportedAt": "2026-05-07T21:50:02.872524",
   "source": "google-sheets",
   "tasks": [
     {
@@ -285,10 +285,25 @@
       "actividad": "Subdivisión Guaymas",
       "entregable": "Viaje a Guaymas",
       "fecha": "Martes 14",
-      "estado": "Subido",
+      "estado": "Terminado",
       "prioridad": "Media",
       "observaciones": "",
-      "links": []
+      "links": [
+        {
+          "id": "link-1",
+          "label": "Plano Final",
+          "url": "https://alexpueblag.github.io/board-aurum/",
+          "fechaSubida": "2026-05-07",
+          "responsable": ""
+        },
+        {
+          "id": "link-2",
+          "label": "Plano final",
+          "url": "https://drive.google.com/file/d/1QQk8EmHooBiKaF8EoMttAvI7PyqEv2Qv/view?usp=drive_link",
+          "fechaSubida": "2026-05-07",
+          "responsable": ""
+        }
+      ]
     },
     {
       "id": "A-019",
