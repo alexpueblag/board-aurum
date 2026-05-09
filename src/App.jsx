@@ -677,28 +677,46 @@ export default function Board() {
         )}
 
         {/* JERARQUÍA */}
-        <main className="space-y-3">
+        <main>
           {personasOrdenadas.length === 0 && (
             <div className="yo-card p-8 text-center text-sm text-stone-400">
               {tasks.length === 0 ? "Cargando tareas desde el Sheet…" : "Sin tareas con los filtros actuales."}
             </div>
           )}
-          {personasOrdenadas.map(persona => (
-            <PersonaCard
-              key={persona}
-              persona={persona}
-              dataByEmpresa={hierarchy[persona]}
-              expanded={expandedPersonas[persona] !== false}
-              onTogglePersona={() => togglePersona(persona)}
-              expandedProyectos={expandedProyectos}
-              onToggleProyecto={toggleProyecto}
-              onOpenTask={setSelectedTaskId}
-              onStatusChange={changeStatusByDrag}
-              draggingId={draggingId}
-              setDraggingId={setDraggingId}
-              saveStatus={saveStatus}
-            />
-          ))}
+          {personasOrdenadas.length > 0 && (
+            <>
+              <div className="personas-tabs">
+                {personasOrdenadas.map(persona => (
+                  <PersonaTab
+                    key={persona}
+                    persona={persona}
+                    dataByEmpresa={hierarchy[persona]}
+                    active={!!expandedPersonas[persona]}
+                    onClick={() => togglePersona(persona)}
+                  />
+                ))}
+              </div>
+              <div className="personas-panels">
+                {personasOrdenadas.map(persona => (
+                  expandedPersonas[persona] && (
+                    <PersonaPanel
+                      key={persona}
+                      persona={persona}
+                      dataByEmpresa={hierarchy[persona]}
+                      expandedProyectos={expandedProyectos}
+                      onToggleProyecto={toggleProyecto}
+                      onOpenTask={setSelectedTaskId}
+                      onStatusChange={changeStatusByDrag}
+                      draggingId={draggingId}
+                      setDraggingId={setDraggingId}
+                      saveStatus={saveStatus}
+                      onClose={() => togglePersona(persona)}
+                    />
+                  )
+                ))}
+              </div>
+            </>
+          )}
         </main>
       </div>
       <ConfirmModal dialog={confirmDialog} />
