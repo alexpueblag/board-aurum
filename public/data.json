@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "exportedAt": "2026-05-08T08:30:08.769924",
+  "exportedAt": "2026-05-08T18:50:03.149219",
   "source": "google-sheets",
   "tasks": [
     {
@@ -316,7 +316,7 @@
       "actividad": "Redefinir financiamientos",
       "entregable": "Presentación final",
       "fecha": "Viernes 17",
-      "estado": "Pendiente",
+      "estado": "Terminado",
       "prioridad": "Media",
       "observaciones": "",
       "links": []
@@ -332,7 +332,7 @@
       "actividad": "Documentación MIA",
       "entregable": "Expediente completo",
       "fecha": "Viernes 17",
-      "estado": "Pendiente",
+      "estado": "En proceso",
       "prioridad": "Media",
       "observaciones": "",
       "links": []
@@ -572,7 +572,7 @@
       "actividad": "Generar oficio y aceptación de oferta",
       "entregable": "Documentos",
       "fecha": "Viernes 24",
-      "estado": "Pendiente",
+      "estado": "En proceso",
       "prioridad": "Media",
       "observaciones": "",
       "links": []
