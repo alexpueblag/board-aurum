@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "exportedAt": "2026-05-08T19:00:04.289420",
+  "exportedAt": "2026-05-08T22:20:02.148514",
   "source": "google-sheets",
   "tasks": [
     {
@@ -522,22 +522,6 @@
       "responsable": "Alejandro",
       "semana": "5",
       "actividad": "Cita con inversionista 5",
-      "entregable": "Minuta",
-      "fecha": "Viernes 1",
-      "estado": "Pendiente",
-      "prioridad": "Media",
-      "observaciones": "",
-      "links": []
-    },
-    {
-      "id": "A-033",
-      "mes": "Mayo",
-      "mesCompromiso": "Mayo",
-      "empresa": "YoDesarrollo",
-      "proyecto": "Casa Alysa",
-      "responsable": "Alejandro",
-      "semana": "5",
-      "actividad": "Cita con inversionista 6",
       "entregable": "Minuta",
       "fecha": "Viernes 1",
       "estado": "Pendiente",
