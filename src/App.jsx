@@ -758,13 +758,33 @@ function PersonaAvatar({ name, size = 40 }) {
   );
 }
 
-function PersonaCard({ persona, dataByEmpresa, expanded, onTogglePersona, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
+function PersonaTab({ persona, dataByEmpresa, active, onClick }) {
   const palette = personPalette(persona);
   const allTasks = Object.values(dataByEmpresa).flatMap(emp => Object.values(emp).flat());
   const total = allTasks.length;
   const cerradas = allTasks.filter(t => t.estado === "Terminado").length;
   const urgentes = allTasks.filter(t => t.estado !== "Terminado").length;
   const altas = allTasks.filter(t => t.prioridad === "Alta" && t.estado !== "Terminado").length;
+
+  return (
+    <button onClick={onClick} className={`persona-tab ${active ? "persona-tab-active" : ""}`} style={{ borderTopColor: palette.main }}>
+      <PersonaAvatar name={persona} size={42} />
+      <div className="persona-tab-info">
+        <h3 className="persona-tab-name">{persona}</h3>
+        <div className="persona-tab-meta">
+          <span>{urgentes} pend.</span>
+          <span>·</span>
+          <span>{cerradas}/{total}</span>
+          {altas > 0 && <span className="urgent-pill"><Zap size={9}/>{altas}</span>}
+        </div>
+      </div>
+      {active ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+    </button>
+  );
+}
+
+function PersonaPanel({ persona, dataByEmpresa, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus, onClose }) {
+  const palette = personPalette(persona);
   const empresasOrdenadas = Object.keys(dataByEmpresa).sort((a, b) => {
     const ai = ORDER_EMPRESAS.indexOf(a), bi = ORDER_EMPRESAS.indexOf(b);
     if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
@@ -772,35 +792,29 @@ function PersonaCard({ persona, dataByEmpresa, expanded, onTogglePersona, expand
   });
 
   return (
-    <section className="persona-card" style={{ borderLeft: `4px solid ${palette.main}` }}>
-      <button onClick={onTogglePersona} className="persona-header">
-        <PersonaAvatar name={persona} size={48} />
-        <div className="text-left flex-1 min-w-0">
-          <h2 className="persona-name">{persona}</h2>
-          <p className="persona-meta">{urgentes} pendientes · {cerradas}/{total} cerradas {altas > 0 && <span className="urgent-pill"><Zap size={10}/>{altas} alta</span>}</p>
-        </div>
-        {expanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-      </button>
-
-      {expanded && (
-        <div className="persona-body">
-          {empresasOrdenadas.map(empresa => (
-            <EmpresaSection
-              key={empresa}
-              empresa={empresa}
-              persona={persona}
-              proyectos={dataByEmpresa[empresa]}
-              expandedProyectos={expandedProyectos}
-              onToggleProyecto={onToggleProyecto}
-              onOpenTask={onOpenTask}
-              onStatusChange={onStatusChange}
-              draggingId={draggingId}
-              setDraggingId={setDraggingId}
-              saveStatus={saveStatus}
-            />
-          ))}
-        </div>
-      )}
+    <section className="persona-panel" style={{ borderLeft: `4px solid ${palette.main}` }}>
+      <div className="persona-panel-header">
+        <PersonaAvatar name={persona} size={32} />
+        <h2 className="persona-panel-name">{persona}</h2>
+        <button onClick={onClose} className="persona-panel-close" title="Cerrar"><X size={16} /></button>
+      </div>
+      <div className="persona-panel-body">
+        {empresasOrdenadas.map(empresa => (
+          <EmpresaSection
+            key={empresa}
+            empresa={empresa}
+            persona={persona}
+            proyectos={dataByEmpresa[empresa]}
+            expandedProyectos={expandedProyectos}
+            onToggleProyecto={onToggleProyecto}
+            onOpenTask={onOpenTask}
+            onStatusChange={onStatusChange}
+            draggingId={draggingId}
+            setDraggingId={setDraggingId}
+            saveStatus={saveStatus}
+          />
+        ))}
+      </div>
     </section>
   );
 }
@@ -1086,6 +1100,24 @@ function GlobalStyles() {
       .persona-meta { font-size: 0.72rem; color: #777; margin-top: 0.2rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
       .urgent-pill { display: inline-flex; align-items: center; gap: 0.15rem; background: #FEE2E2; color: #991B1B; padding: 0.1rem 0.4rem; font-weight: 700; font-size: 0.65rem; }
       .persona-body { padding: 0 1.1rem 1.1rem; }
+      .personas-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+      @media (max-width: 768px) { .personas-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      .persona-tab { display: flex; align-items: center; gap: 0.65rem; padding: 0.7rem 0.85rem; background: #FFF; border: 1px solid #ECECEC; border-top: 4px solid #1a1a1a; cursor: pointer; transition: all 0.15s; text-align: left; width: 100%; }
+      .persona-tab:hover { background: #FAFAFA; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+      .persona-tab-active { background: #1a1a1a; }
+      .persona-tab-active .persona-tab-name { color: #fff; }
+      .persona-tab-active .persona-tab-meta { color: rgba(255,255,255,0.7); }
+      .persona-tab-active svg { color: #fff; }
+      .persona-tab-info { flex: 1; min-width: 0; }
+      .persona-tab-name { font-family: 'Playfair Display', serif; font-size: 1.05rem; font-weight: 700; line-height: 1.1; margin: 0; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .persona-tab-meta { font-size: 0.7rem; color: #777; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+      .personas-panels { display: flex; flex-direction: column; gap: 0.75rem; }
+      .persona-panel { background: #FFF; border: 1px solid #ECECEC; overflow: hidden; }
+      .persona-panel-header { display: flex; align-items: center; gap: 0.65rem; padding: 0.85rem 1.1rem; border-bottom: 1px solid #ECECEC; background: #FAFAFA; }
+      .persona-panel-name { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; margin: 0; flex: 1; line-height: 1; }
+      .persona-panel-close { padding: 0.4rem; background: transparent; color: #555; transition: all 0.12s; border-radius: 50%; }
+      .persona-panel-close:hover { background: #F3F3F3; color: #1a1a1a; }
+      .persona-panel-body { padding: 0.75rem 1.1rem 1.1rem; }
 
       /* Empresa */
       .empresa-section { margin-top: 1rem; }
