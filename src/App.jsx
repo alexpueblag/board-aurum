@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Megaphone, Home, Compass, Building2, Users, Folder, Briefcase,
-  ChevronDown, ChevronRight, Plus, Trash2, Link2, X, RefreshCw,
+  Megaphone, Home, Compass, Building2, Users, Folder,
+  ChevronDown, ChevronRight, Plus, Link2, X, RefreshCw,
   AlertCircle, CheckCircle2, Clock, Zap
 } from "lucide-react";
 
@@ -169,7 +169,6 @@ export default function Board() {
   const [newTask, setNewTask] = useState(emptyTask());
   const [linkDraft, setLinkDraft] = useState({ label: "", url: "" });
   const [selectedTaskId, setSelectedTaskId] = useState(null);
-  const [expandedPersonas, setExpandedPersonas] = useState({});
   const [expandedProyectos, setExpandedProyectos] = useState({});
   const [draggingId, setDraggingId] = useState(null);
   const [lastSync, setLastSync] = useState(null);
@@ -211,16 +210,16 @@ export default function Board() {
     setSyncError(null);
     try {
       let remote = null;
-      // 1. Lectura en vivo del Apps Script (no espera al cron)
       try {
         const result = await apiCall("getAll");
         if (Array.isArray(result.tasks)) remote = result.tasks;
       } catch (apiErr) {
         console.warn("[loadFromRemote] Apps Script no respondió, fallback a data.json:", apiErr.message);
       }
-      // 2. Fallback a data.json si Apps Script falló
       if (!remote) {
-        const base = import.meta.env.BASE_URL || "/";
+        const base = (typeof window !== "undefined" && window.location)
+          ? window.location.pathname.replace(/[^/]*$/, "")
+          : "/";
         const url = `${base}data.json?t=${Date.now()}`;
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -290,7 +289,6 @@ export default function Board() {
     Object.keys(pendingPatches.current).forEach(id => flushTask(id));
   }, [flushTask]);
 
-  // Reintento automático
   useEffect(() => {
     const id = setInterval(() => {
       Object.entries(saveStatus).forEach(([taskId, st]) => {
@@ -408,7 +406,6 @@ export default function Board() {
     setSelectedTaskId(null);
   }
 
-  function togglePersona(p) { setExpandedPersonas(prev => ({ ...prev, [p]: !prev[p] })); }
   function toggleProyecto(key) { setExpandedProyectos(prev => ({ ...prev, [key]: !prev[key] })); }
 
   // ----- DERIVADOS -----
@@ -676,7 +673,7 @@ export default function Board() {
           </section>
         )}
 
-        {/* JERARQUÍA */}
+        {/* COLUMNAS DE RESPONSABLES — siempre visibles */}
         <main>
           {personasOrdenadas.length === 0 && (
             <div className="yo-card p-8 text-center text-sm text-stone-400">
@@ -684,38 +681,22 @@ export default function Board() {
             </div>
           )}
           {personasOrdenadas.length > 0 && (
-            <>
-              <div className="personas-tabs">
-                {personasOrdenadas.map(persona => (
-                  <PersonaTab
-                    key={persona}
-                    persona={persona}
-                    dataByEmpresa={hierarchy[persona]}
-                    active={!!expandedPersonas[persona]}
-                    onClick={() => togglePersona(persona)}
-                  />
-                ))}
-              </div>
-              <div className="personas-panels">
-                {personasOrdenadas.map(persona => (
-                  expandedPersonas[persona] && (
-                    <PersonaPanel
-                      key={persona}
-                      persona={persona}
-                      dataByEmpresa={hierarchy[persona]}
-                      expandedProyectos={expandedProyectos}
-                      onToggleProyecto={toggleProyecto}
-                      onOpenTask={setSelectedTaskId}
-                      onStatusChange={changeStatusByDrag}
-                      draggingId={draggingId}
-                      setDraggingId={setDraggingId}
-                      saveStatus={saveStatus}
-                      onClose={() => togglePersona(persona)}
-                    />
-                  )
-                ))}
-              </div>
-            </>
+            <div className="personas-columns">
+              {personasOrdenadas.map(persona => (
+                <PersonaColumn
+                  key={persona}
+                  persona={persona}
+                  dataByEmpresa={hierarchy[persona]}
+                  expandedProyectos={expandedProyectos}
+                  onToggleProyecto={toggleProyecto}
+                  onOpenTask={setSelectedTaskId}
+                  onStatusChange={changeStatusByDrag}
+                  draggingId={draggingId}
+                  setDraggingId={setDraggingId}
+                  saveStatus={saveStatus}
+                />
+              ))}
+            </div>
           )}
         </main>
       </div>
@@ -758,49 +739,34 @@ function PersonaAvatar({ name, size = 40 }) {
   );
 }
 
-function PersonaTab({ persona, dataByEmpresa, active, onClick }) {
-  const palette = personPalette(persona);
-  const allTasks = Object.values(dataByEmpresa).flatMap(emp => Object.values(emp).flat());
-  const total = allTasks.length;
-  const cerradas = allTasks.filter(t => t.estado === "Terminado").length;
-  const urgentes = allTasks.filter(t => t.estado !== "Terminado").length;
-  const altas = allTasks.filter(t => t.prioridad === "Alta" && t.estado !== "Terminado").length;
-
-  return (
-    <button onClick={onClick} className={`persona-tab ${active ? "persona-tab-active" : ""}`} style={{ borderTopColor: palette.main }}>
-      <PersonaAvatar name={persona} size={42} />
-      <div className="persona-tab-info">
-        <h3 className="persona-tab-name">{persona}</h3>
-        <div className="persona-tab-meta">
-          <span>{urgentes} pend.</span>
-          <span>·</span>
-          <span>{cerradas}/{total}</span>
-          {altas > 0 && <span className="urgent-pill"><Zap size={9}/>{altas}</span>}
-        </div>
-      </div>
-      {active ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-    </button>
-  );
-}
-
-function PersonaPanel({ persona, dataByEmpresa, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus, onClose }) {
+// PersonaColumn — columna fija por responsable, contiene secciones por empresa
+function PersonaColumn({ persona, dataByEmpresa, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
   const palette = personPalette(persona);
   const empresasOrdenadas = Object.keys(dataByEmpresa).sort((a, b) => {
     const ai = ORDER_EMPRESAS.indexOf(a), bi = ORDER_EMPRESAS.indexOf(b);
     if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     return a.localeCompare(b);
   });
+  const allTasks = Object.values(dataByEmpresa).flatMap(emp => Object.values(emp).flat());
+  const total = allTasks.length;
+  const cerradas = allTasks.filter(t => t.estado === "Terminado").length;
+  const altas = allTasks.filter(t => t.prioridad === "Alta" && t.estado !== "Terminado").length;
 
   return (
-    <section className="persona-panel" style={{ borderLeft: `4px solid ${palette.main}` }}>
-      <div className="persona-panel-header">
-        <PersonaAvatar name={persona} size={32} />
-        <h2 className="persona-panel-name">{persona}</h2>
-        <button onClick={onClose} className="persona-panel-close" title="Cerrar"><X size={16} /></button>
-      </div>
-      <div className="persona-panel-body">
+    <section className="persona-column" style={{ borderTopColor: palette.main }}>
+      <header className="persona-column-header">
+        <PersonaAvatar name={persona} size={36} />
+        <div className="persona-column-info">
+          <h2 className="persona-column-name">{persona}</h2>
+          <div className="persona-column-meta">
+            <span>{cerradas}/{total}</span>
+            {altas > 0 && <span className="urgent-pill"><Zap size={9}/>{altas}</span>}
+          </div>
+        </div>
+      </header>
+      <div className="persona-column-body">
         {empresasOrdenadas.map(empresa => (
-          <EmpresaSection
+          <EmpresaBlock
             key={empresa}
             empresa={empresa}
             persona={persona}
@@ -819,37 +785,42 @@ function PersonaPanel({ persona, dataByEmpresa, expandedProyectos, onToggleProye
   );
 }
 
-function EmpresaSection({ empresa, persona, proyectos, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
+// EmpresaBlock — sección por empresa dentro de una columna de responsable
+function EmpresaBlock({ empresa, persona, proyectos, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
   const proyectosNombres = Object.keys(proyectos).sort();
   return (
-    <div className="empresa-section">
-      <div className="empresa-header">
-        <CompanyLogo name={empresa} size={20} />
-        <span className="empresa-name">{empresa}</span>
+    <div className="empresa-block">
+      <div className="empresa-header-mini">
+        <CompanyLogo name={empresa} size={14} />
+        <span className="empresa-name-mini">{empresa}</span>
       </div>
-      <div className="proyectos-grid">
-        {proyectosNombres.map(proyecto => (
-          <ProyectoMiniCard
-            key={proyecto}
-            proyecto={proyecto}
-            tasks={proyectos[proyecto]}
-            expanded={!!expandedProyectos[`${persona}::${empresa}::${proyecto}`]}
-            onToggle={() => onToggleProyecto(`${persona}::${empresa}::${proyecto}`)}
-            onOpenTask={onOpenTask}
-            onStatusChange={onStatusChange}
-            draggingId={draggingId}
-            setDraggingId={setDraggingId}
-            saveStatus={saveStatus}
-          />
-        ))}
+      <div className="proyectos-row">
+        {proyectosNombres.map(proyecto => {
+          const key = `${persona}::${empresa}::${proyecto}`;
+          const expanded = !!expandedProyectos[key];
+          return (
+            <ProyectoTileCompact
+              key={proyecto}
+              proyecto={proyecto}
+              tasks={proyectos[proyecto]}
+              expanded={expanded}
+              onToggle={() => onToggleProyecto(key)}
+              onOpenTask={onOpenTask}
+              onStatusChange={onStatusChange}
+              draggingId={draggingId}
+              setDraggingId={setDraggingId}
+              saveStatus={saveStatus}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function ProyectoMiniCard({ proyecto, tasks, expanded, onToggle, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
+// ProyectoTileCompact — tile minimal con counts; al expandir se vuelve full-width y muestra kanban vertical
+function ProyectoTileCompact({ proyecto, tasks, expanded, onToggle, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
   const Icon = iconForProject(proyecto);
-  const total = tasks.length;
   const pen = tasks.filter(t => t.estado === "Pendiente").length;
   const proc = tasks.filter(t => t.estado === "En proceso").length;
   const sub = tasks.filter(t => t.estado === "Subido").length;
@@ -857,24 +828,24 @@ function ProyectoMiniCard({ proyecto, tasks, expanded, onToggle, onOpenTask, onS
   const altas = tasks.filter(t => t.prioridad === "Alta" && t.estado !== "Terminado").length;
 
   return (
-    <div className={`proyecto-card ${expanded ? "expanded" : ""}`}>
-      <button onClick={onToggle} className="proyecto-header">
-        <div className="proyecto-icon"><Icon size={18} /></div>
-        <div className="proyecto-info">
-          <div className="proyecto-name">{proyecto}</div>
-          <div className="proyecto-stats">
-            <span className="stat-pen">{pen}</span>
-            <span className="stat-proc">{proc}</span>
-            <span className="stat-sub">{sub}</span>
-            <span className="stat-term">{term}</span>
-            {altas > 0 && <span className="stat-alta"><Zap size={9}/>{altas}</span>}
-          </div>
+    <div className={`proyecto-tile ${expanded ? "expanded" : ""}`}>
+      <button onClick={onToggle} className="proyecto-tile-button" title={proyecto}>
+        <div className="proyecto-tile-top">
+          <Icon size={11} />
+          <span className="proyecto-tile-name">{proyecto}</span>
+          {altas > 0 && !expanded && <span className="alta-mini"><Zap size={8}/>{altas}</span>}
+          {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
         </div>
-        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <div className="proyecto-tile-stats">
+          <span className="stat-pen" title="Pendientes">{pen}</span>
+          <span className="stat-proc" title="En proceso">{proc}</span>
+          <span className="stat-sub" title="Subidas">{sub}</span>
+          <span className="stat-term" title="Terminadas">{term}</span>
+        </div>
       </button>
       {expanded && (
-        <div className="proyecto-kanban">
-          <ProjectKanban
+        <div className="proyecto-tile-kanban">
+          <ProjectKanbanVertical
             tasks={tasks}
             onOpen={onOpenTask}
             onStatusChange={onStatusChange}
@@ -888,9 +859,10 @@ function ProyectoMiniCard({ proyecto, tasks, expanded, onToggle, onOpenTask, onS
   );
 }
 
-function ProjectKanban({ tasks, onOpen, onStatusChange, draggingId, setDraggingId, saveStatus }) {
+// Kanban vertical — para encajar en columna angosta de responsable
+function ProjectKanbanVertical({ tasks, onOpen, onStatusChange, draggingId, setDraggingId, saveStatus }) {
   return (
-    <div className="kanban-grid">
+    <div className="kanban-vertical">
       {ESTADOS.map(estado => (
         <KanbanColumn
           key={estado}
@@ -1092,75 +1064,252 @@ function GlobalStyles() {
       .persona-avatar { border-radius: 50%; object-fit: cover; }
       .persona-avatar-placeholder { display: grid; place-items: center; border-radius: 50%; color: #fff; font-weight: 800; letter-spacing: -0.04em; }
 
-      /* Persona Card */
-      .persona-card { background: #FFFFFF; border: 1px solid #ECECEC; overflow: hidden; }
-      .persona-header { width: 100%; display: flex; align-items: center; gap: 0.85rem; padding: 1rem 1.1rem; background: #FFF; cursor: pointer; transition: background 0.15s; text-align: left; }
-      .persona-header:hover { background: #FAFAFA; }
-      .persona-name { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700; margin: 0; line-height: 1; }
-      .persona-meta { font-size: 0.72rem; color: #777; margin-top: 0.2rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
-      .urgent-pill { display: inline-flex; align-items: center; gap: 0.15rem; background: #FEE2E2; color: #991B1B; padding: 0.1rem 0.4rem; font-weight: 700; font-size: 0.65rem; }
-      .persona-body { padding: 0 1.1rem 1.1rem; }
-      .personas-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
-      @media (max-width: 768px) { .personas-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-      .persona-tab { display: flex; align-items: center; gap: 0.65rem; padding: 0.7rem 0.85rem; background: #FFF; border: 1px solid #ECECEC; border-top: 4px solid #1a1a1a; cursor: pointer; transition: all 0.15s; text-align: left; width: 100%; }
-      .persona-tab:hover { background: #FAFAFA; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-      .persona-tab-active { background: #1a1a1a; }
-      .persona-tab-active .persona-tab-name { color: #fff; }
-      .persona-tab-active .persona-tab-meta { color: rgba(255,255,255,0.7); }
-      .persona-tab-active svg { color: #fff; }
-      .persona-tab-info { flex: 1; min-width: 0; }
-      .persona-tab-name { font-family: 'Playfair Display', serif; font-size: 1.05rem; font-weight: 700; line-height: 1.1; margin: 0; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .persona-tab-meta { font-size: 0.7rem; color: #777; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
-      .personas-panels { display: flex; flex-direction: column; gap: 0.75rem; }
-      .persona-panel { background: #FFF; border: 1px solid #ECECEC; overflow: hidden; }
-      .persona-panel-header { display: flex; align-items: center; gap: 0.65rem; padding: 0.85rem 1.1rem; border-bottom: 1px solid #ECECEC; background: #FAFAFA; }
-      .persona-panel-name { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; margin: 0; flex: 1; line-height: 1; }
-      .persona-panel-close { padding: 0.4rem; background: transparent; color: #555; transition: all 0.12s; border-radius: 50%; }
-      .persona-panel-close:hover { background: #F3F3F3; color: #1a1a1a; }
-      .persona-panel-body { padding: 0.75rem 1.1rem 1.1rem; }
+      /* ============ COLUMNAS DE RESPONSABLES ============ */
+      .personas-columns {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.6rem;
+        align-items: start;
+      }
+      @media (max-width: 1280px) {
+        .personas-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 640px) {
+        .personas-columns { grid-template-columns: 1fr; }
+      }
 
-      /* Empresa */
-      .empresa-section { margin-top: 1rem; }
-      .empresa-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid #ECECEC; margin-bottom: 0.6rem; }
-      .empresa-name { font-family: 'Playfair Display', serif; font-size: 0.95rem; font-weight: 600; color: #1a1a1a; }
+      .persona-column {
+        background: #FFF;
+        border: 1px solid #ECECEC;
+        border-top: 4px solid #1a1a1a;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .persona-column-header {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.7rem 0.8rem;
+        border-bottom: 1px solid #ECECEC;
+        background: #FAFAFA;
+      }
+      .persona-column-info { flex: 1; min-width: 0; }
+      .persona-column-name {
+        font-family: 'Playfair Display', serif;
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1;
+        color: #1a1a1a;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .persona-column-meta {
+        font-size: 0.68rem;
+        color: #777;
+        margin-top: 0.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        flex-wrap: wrap;
+      }
+      .persona-column-body {
+        padding: 0.55rem 0.65rem 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+      }
+      .urgent-pill {
+        display: inline-flex; align-items: center; gap: 0.15rem;
+        background: #FEE2E2; color: #991B1B;
+        padding: 0.05rem 0.35rem;
+        font-weight: 700; font-size: 0.62rem;
+      }
 
-      /* Proyectos */
-      .proyectos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.5rem; }
-      .proyecto-card { background: #FFF; border: 1px solid #E5E5E5; transition: border 0.15s; }
-      .proyecto-card.expanded { grid-column: 1 / -1; border-color: #1a1a1a; }
-      .proyecto-header { width: 100%; display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.85rem; cursor: pointer; text-align: left; transition: background 0.15s; }
-      .proyecto-header:hover { background: #FAFAFA; }
-      .proyecto-icon { display: grid; place-items: center; width: 32px; height: 32px; background: #F3F3F3; color: #1a1a1a; }
-      .proyecto-info { flex: 1; min-width: 0; }
-      .proyecto-name { font-size: 0.82rem; font-weight: 700; color: #1a1a1a; line-height: 1.2; margin-bottom: 0.18rem; }
-      .proyecto-stats { display: flex; gap: 0.25rem; font-size: 0.65rem; font-weight: 700; }
-      .proyecto-stats span { padding: 0.05rem 0.35rem; min-width: 18px; text-align: center; }
+      /* ============ EMPRESA (sub-sección dentro de columna) ============ */
+      .empresa-block { display: flex; flex-direction: column; }
+      .empresa-header-mini {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding-bottom: 0.3rem;
+        margin-bottom: 0.35rem;
+        border-bottom: 1px solid #ECECEC;
+      }
+      .empresa-name-mini {
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #555;
+      }
+
+      /* ============ PROYECTOS — tiles compactos en una fila ============ */
+      .proyectos-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+        gap: 0.3rem;
+        grid-auto-flow: row dense;
+      }
+      .proyecto-tile {
+        background: #FFF;
+        border: 1px solid #E5E5E5;
+        min-width: 0;
+        transition: border-color 0.12s;
+      }
+      .proyecto-tile:hover { border-color: #999; }
+      .proyecto-tile.expanded {
+        grid-column: 1 / -1;
+        border-color: #1a1a1a;
+      }
+      .proyecto-tile-button {
+        width: 100%;
+        padding: 0.4rem 0.45rem;
+        cursor: pointer;
+        text-align: left;
+        background: transparent;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+      .proyecto-tile-top {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        min-width: 0;
+      }
+      .proyecto-tile-name {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+        min-width: 0;
+        line-height: 1.15;
+      }
+      .alta-mini {
+        display: inline-flex; align-items: center; gap: 0.1rem;
+        background: #FEE2E2; color: #991B1B;
+        padding: 0.05rem 0.25rem;
+        font-size: 0.58rem; font-weight: 700;
+        flex-shrink: 0;
+      }
+      .proyecto-tile-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1px;
+        font-size: 0.6rem;
+        font-weight: 700;
+      }
+      .proyecto-tile-stats span {
+        text-align: center;
+        padding: 0.08rem 0;
+        line-height: 1.1;
+      }
       .stat-pen { background: #F3F3F3; color: #555; }
       .stat-proc { background: #FEF3C7; color: #92400E; }
       .stat-sub { background: #DBEAFE; color: #1E40AF; }
       .stat-term { background: #D1FAE5; color: #065F46; }
-      .stat-alta { background: #FEE2E2; color: #991B1B; display: inline-flex; align-items: center; gap: 0.1rem; }
 
-      /* Kanban */
-      .proyecto-kanban { padding: 0.6rem 0.85rem 0.85rem; border-top: 1px solid #ECECEC; background: #FAFAFA; }
-      .kanban-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 0.5rem; }
-      @media (max-width: 768px) { .kanban-grid { grid-template-columns: 1fr; } }
-      .kanban-col { background: #FFF; border: 1px solid #E5E5E5; min-height: 80px; transition: all 0.15s; }
-      .kanban-col.over { border-color: #000; background: #F3F3F3; }
-      .kanban-col-header { display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.6rem; border-bottom: 1px solid #ECECEC; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #555; }
-      .kanban-count { background: #F3F3F3; padding: 0.05rem 0.4rem; min-width: 20px; text-align: center; }
-      .kanban-col-body { padding: 0.4rem; min-height: 50px; }
-      .kanban-empty { font-size: 0.7rem; color: #BBB; text-align: center; padding: 0.6rem 0; }
-      .kanban-card { background: #FFF; border: 1px solid #E5E5E5; padding: 0.5rem; margin-bottom: 0.35rem; cursor: grab; transition: all 0.12s; }
-      .kanban-card:hover { border-color: #1a1a1a; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-      .kanban-card:active { cursor: grabbing; }
-      .kanban-card.dragging { opacity: 0.4; }
-      .kanban-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
-      .kanban-card-title { font-size: 0.77rem; font-weight: 700; color: #1a1a1a; line-height: 1.25; margin: 0 0 0.4rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-      .kanban-card-bottom { display: flex; justify-content: space-between; align-items: center; gap: 0.3rem; font-size: 0.65rem; color: #888; font-weight: 600; }
+      /* ============ KANBAN VERTICAL (al expandir tile) ============ */
+      .proyecto-tile-kanban {
+        border-top: 1px solid #ECECEC;
+        background: #FAFAFA;
+        padding: 0.45rem;
+      }
+      .kanban-vertical {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .kanban-vertical .kanban-col {
+        background: #FFF;
+        border: 1px solid #E5E5E5;
+        min-height: 50px;
+        transition: all 0.15s;
+      }
+      .kanban-vertical .kanban-col.over {
+        border-color: #000;
+        background: #F3F3F3;
+      }
+      .kanban-vertical .kanban-col-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.35rem 0.55rem;
+        border-bottom: 1px solid #ECECEC;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #555;
+      }
+      .kanban-vertical .kanban-count {
+        background: #F3F3F3;
+        padding: 0.05rem 0.35rem;
+        min-width: 18px;
+        text-align: center;
+        font-size: 0.6rem;
+      }
+      .kanban-vertical .kanban-col-body {
+        padding: 0.35rem;
+      }
+      .kanban-vertical .kanban-empty {
+        font-size: 0.65rem;
+        color: #BBB;
+        text-align: center;
+        padding: 0.4rem 0;
+      }
+      .kanban-vertical .kanban-card {
+        background: #FFF;
+        border: 1px solid #E5E5E5;
+        padding: 0.4rem 0.45rem;
+        margin-bottom: 0.3rem;
+        cursor: grab;
+        transition: all 0.12s;
+      }
+      .kanban-vertical .kanban-card:last-child { margin-bottom: 0; }
+      .kanban-vertical .kanban-card:hover {
+        border-color: #1a1a1a;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      }
+      .kanban-vertical .kanban-card:active { cursor: grabbing; }
+      .kanban-vertical .kanban-card.dragging { opacity: 0.4; }
+      .kanban-vertical .kanban-card-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.25rem;
+      }
+      .kanban-vertical .kanban-card-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        line-height: 1.2;
+        margin: 0 0 0.3rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .kanban-vertical .kanban-card-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.6rem;
+        color: #888;
+        font-weight: 600;
+        flex-wrap: wrap;
+      }
 
       /* Prioridad */
-      .pri-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+      .pri-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
       .pri-alta { background: #DC2626; }
       .pri-media { background: #F59E0B; }
       .pri-baja { background: #94A3B8; }
@@ -1177,15 +1326,15 @@ function GlobalStyles() {
       .est-terminado { background: #D1FAE5; color: #065F46; }
 
       /* Deadline */
-      .deadline-badge { display: inline-flex; align-items: center; padding: 0.12rem 0.4rem; font-size: 0.65rem; font-weight: 700; }
-      .deadline-c { padding: 0.08rem 0.32rem; font-size: 0.6rem; }
+      .deadline-badge { display: inline-flex; align-items: center; padding: 0.1rem 0.35rem; font-size: 0.6rem; font-weight: 700; }
+      .deadline-c { padding: 0.06rem 0.3rem; font-size: 0.58rem; }
       .deadline-red { background: #FEE2E2; color: #991B1B; }
       .deadline-orange { background: #FED7AA; color: #9A3412; }
       .deadline-green { background: #D1FAE5; color: #065F46; }
       .deadline-gray { background: #F3F3F3; color: #777; }
 
       /* Save indicators */
-      .save-dot { display: inline-grid; place-items: center; width: 14px; height: 14px; }
+      .save-dot { display: inline-grid; place-items: center; width: 12px; height: 12px; }
       .save-saving { color: #92400E; animation: pulse 1s ease-in-out infinite; }
       .save-saved { color: #065F46; }
       .save-error { color: #991B1B; }
@@ -1202,7 +1351,7 @@ function GlobalStyles() {
       .g-sync-idle { color: #888; }
 
       /* Link icon */
-      .link-icon { display: inline-flex; align-items: center; gap: 0.15rem; background: #DBEAFE; color: #1E40AF; padding: 0.08rem 0.35rem; font-weight: 700; }
+      .link-icon { display: inline-flex; align-items: center; gap: 0.15rem; background: #DBEAFE; color: #1E40AF; padding: 0.06rem 0.3rem; font-weight: 700; }
 
       /* Metric */
       .metric-card { background: #FFF; border: 1px solid #ECECEC; padding: 0.55rem 0.75rem; }
