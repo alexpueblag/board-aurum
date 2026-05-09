@@ -43,6 +43,8 @@ const ORDER_PERSONAS = ["Alejandro", "Alma", "Sayri", "Mariana"];
 const ORDER_EMPRESAS = ["Aurum Arquitectos", "YoDesarrollo"];
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const MONTH_INDEX = MESES.reduce((acc, m, i) => ({ ...acc, [m]: i }), {});
+const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const PROJECT_ORDER_KEY = "aurum-project-order-v1";
 
 const PERSON_COLORS = {
   Alejandro: { main: "#0F172A", soft: "#F4F8FB", text: "#0F172A" },
@@ -117,6 +119,28 @@ function iconForProject(name) {
 function getInitials(name) {
   return String(name || "?").split(/\s+/).map(p => p[0]).join("").slice(0, 2).toUpperCase();
 }
+function isoWeekNumber(y, m, d) {
+  const target = new Date(Date.UTC(y, m - 1, d));
+  const dayNum = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  return Math.ceil((((target - yearStart) / 86400000) + 1) / 7);
+}
+function deriveDateFields(dateStr) {
+  if (!dateStr) return { mes: "", fecha: "", semana: "" };
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return { mes: "", fecha: "", semana: "" };
+  const date = new Date(y, m - 1, d);
+  return {
+    mes: MESES[m - 1],
+    fecha: `${DIAS_SEMANA[date.getDay()]} ${d}`,
+    semana: `Semana ${isoWeekNumber(y, m, d)}`,
+  };
+}
+function todayDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // ===================================================================
 // API
@@ -171,6 +195,11 @@ export default function Board() {
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [expandedProyectos, setExpandedProyectos] = useState({});
   const [draggingId, setDraggingId] = useState(null);
+  const [draggingTileKey, setDraggingTileKey] = useState(null);
+  const [projectOrder, setProjectOrder] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(PROJECT_ORDER_KEY) || "{}"); }
+    catch { return {}; }
+  });
   const [lastSync, setLastSync] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
@@ -408,9 +437,27 @@ export default function Board() {
 
   function toggleProyecto(key) { setExpandedProyectos(prev => ({ ...prev, [key]: !prev[key] })); }
 
+  const reorderProjects = useCallback((persona, empresa, fromIdx, toIdx, allProjects) => {
+    setProjectOrder(prev => {
+      const key = `${persona}::${empresa}`;
+      const baseList = (prev[key] && prev[key].length > 0)
+        ? [...prev[key].filter(p => allProjects.includes(p)), ...allProjects.filter(p => !prev[key].includes(p))]
+        : [...allProjects];
+      if (fromIdx < 0 || toIdx < 0 || fromIdx >= baseList.length || toIdx >= baseList.length) return prev;
+      const [moved] = baseList.splice(fromIdx, 1);
+      baseList.splice(toIdx, 0, moved);
+      const next = { ...prev, [key]: baseList };
+      try { localStorage.setItem(PROJECT_ORDER_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   // ----- DERIVADOS -----
   const projects = useMemo(() => ["Todos", ...Array.from(new Set(tasks.map(t => t.proyecto).filter(Boolean))).sort()], [tasks]);
   const responsables = useMemo(() => ["Todos", ...Array.from(new Set(tasks.map(t => t.responsable).filter(Boolean))).sort()], [tasks]);
+  const existingProjects = useMemo(() => projects.filter(p => p !== "Todos"), [projects]);
+  const existingResponsables = useMemo(() => responsables.filter(r => r !== "Todos"), [responsables]);
+  const existingActividades = useMemo(() => Array.from(new Set(tasks.map(t => t.actividad).filter(Boolean))).sort(), [tasks]);
 
   const filteredTasks = useMemo(() => {
     const term = filters.search.trim().toLowerCase();
@@ -628,10 +675,10 @@ export default function Board() {
         {/* MÉTRICAS */}
         <section className="mb-3 grid grid-cols-3 sm:grid-cols-6 gap-1.5">
           <Metric label="Total" value={metrics.total} />
-          <Metric label="Pend." value={metrics.pen} />
-          <Metric label="Proceso" value={metrics.proc} />
-          <Metric label="Subidas" value={metrics.sub} />
-          <Metric label="Term." value={metrics.term} />
+          <Metric label="Pend." value={metrics.pen} tone="pendiente" />
+          <Metric label="Proceso" value={metrics.proc} tone="en-proceso" />
+          <Metric label="Subidas" value={metrics.sub} tone="subido" />
+          <Metric label="Term." value={metrics.term} tone="terminado" />
           <Metric label="Avance" value={`${metrics.avance}%`} />
         </section>
 
@@ -654,19 +701,51 @@ export default function Board() {
               <button onClick={() => setShowForm(false)} className="btn-ghost"><X size={14}/></button>
             </div>
             <div className="grid gap-2 md:grid-cols-3">
-              <Field label="Empresa"><select value={newTask.empresa} onChange={e => setNewTask({ ...newTask, empresa: e.target.value })} className="input">{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
-              <Field label="Proyecto"><input className="input" value={newTask.proyecto} onChange={e => setNewTask({ ...newTask, proyecto: e.target.value })} placeholder="Nombre del proyecto" /></Field>
-              <Field label="Responsable"><input className="input" value={newTask.responsable} onChange={e => setNewTask({ ...newTask, responsable: e.target.value })} /></Field>
-              <Field label="Mes"><select className="input" value={newTask.mesCompromiso} onChange={e => setNewTask({ ...newTask, mesCompromiso: e.target.value })}>{MESES.map(m => <option key={m}>{m}</option>)}</select></Field>
-              <Field label="Fecha"><input className="input" value={newTask.fecha} onChange={e => setNewTask({ ...newTask, fecha: e.target.value })} placeholder="Viernes 1" /></Field>
-              <Field label="Semana"><input className="input" value={newTask.semana} onChange={e => setNewTask({ ...newTask, semana: e.target.value })} /></Field>
-              <Field label="Prioridad"><select className="input" value={newTask.prioridad} onChange={e => setNewTask({ ...newTask, prioridad: e.target.value })}>{PRIORIDADES.map(p => <option key={p}>{p}</option>)}</select></Field>
-              <Field label="Estado"><select className="input" value={newTask.estado} onChange={e => setNewTask({ ...newTask, estado: e.target.value })}>{ESTADOS.map(s => <option key={s}>{s}</option>)}</select></Field>
+              <Field label="Empresa">
+                <select value={newTask.empresa} onChange={e => setNewTask({ ...newTask, empresa: e.target.value })} className="input">
+                  {EMPRESAS.map(e => <option key={e}>{e}</option>)}
+                </select>
+              </Field>
+              <Field label="Proyecto (existente o nuevo)">
+                <input className="input" list="dl-proyectos" value={newTask.proyecto} onChange={e => setNewTask({ ...newTask, proyecto: e.target.value })} placeholder="Selecciona o escribe nuevo" />
+                <datalist id="dl-proyectos">{existingProjects.map(p => <option key={p} value={p} />)}</datalist>
+              </Field>
+              <Field label="Responsable (existente o nuevo)">
+                <input className="input" list="dl-responsables" value={newTask.responsable} onChange={e => setNewTask({ ...newTask, responsable: e.target.value })} placeholder="Selecciona o escribe nuevo" />
+                <datalist id="dl-responsables">{existingResponsables.map(r => <option key={r} value={r} />)}</datalist>
+              </Field>
+              <Field label="Fecha (calendario)">
+                <input type="date" className="input" value={newTask._dateStr || ""} onChange={e => {
+                  const ds = e.target.value;
+                  const d = deriveDateFields(ds);
+                  setNewTask({ ...newTask, _dateStr: ds, fecha: d.fecha, semana: d.semana, mes: d.mes, mesCompromiso: d.mes });
+                }} />
+              </Field>
+              <Field label="Prioridad">
+                <select className="input" value={newTask.prioridad} onChange={e => setNewTask({ ...newTask, prioridad: e.target.value })}>
+                  {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
+                </select>
+              </Field>
+              <Field label="Estado">
+                <select className="input" value={newTask.estado} onChange={e => setNewTask({ ...newTask, estado: e.target.value })}>
+                  {ESTADOS.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </Field>
             </div>
             <div className="grid gap-2 mt-2">
-              <Field label="Actividad"><input className="input" value={newTask.actividad} onChange={e => setNewTask({ ...newTask, actividad: e.target.value })} /></Field>
-              <Field label="Entregable"><input className="input" value={newTask.entregable} onChange={e => setNewTask({ ...newTask, entregable: e.target.value })} /></Field>
+              <Field label="Actividad (existente o nueva)">
+                <input className="input" list="dl-actividades" value={newTask.actividad} onChange={e => setNewTask({ ...newTask, actividad: e.target.value })} placeholder="Selecciona o escribe nueva" />
+                <datalist id="dl-actividades">{existingActividades.map(a => <option key={a} value={a} />)}</datalist>
+              </Field>
+              <Field label="Entregable">
+                <input className="input" value={newTask.entregable} onChange={e => setNewTask({ ...newTask, entregable: e.target.value })} />
+              </Field>
             </div>
+            {newTask._dateStr && (
+              <div className="mt-2 form-derived">
+                Se guardará en el Sheet como: <strong>{newTask.mes}</strong> · <strong>{newTask.fecha}</strong> · <strong>{newTask.semana}</strong>
+              </div>
+            )}
             <div className="mt-3 flex justify-end">
               <button onClick={addTask} className="yo-btn-primary"><Plus size={14}/>Crear en Sheet</button>
             </div>
@@ -694,6 +773,10 @@ export default function Board() {
                   draggingId={draggingId}
                   setDraggingId={setDraggingId}
                   saveStatus={saveStatus}
+                  projectOrder={projectOrder}
+                  onReorderProjects={reorderProjects}
+                  draggingTileKey={draggingTileKey}
+                  setDraggingTileKey={setDraggingTileKey}
                 />
               ))}
             </div>
@@ -740,7 +823,7 @@ function PersonaAvatar({ name, size = 40 }) {
 }
 
 // PersonaColumn — columna fija por responsable, contiene secciones por empresa
-function PersonaColumn({ persona, dataByEmpresa, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
+function PersonaColumn({ persona, dataByEmpresa, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus, projectOrder, onReorderProjects, draggingTileKey, setDraggingTileKey }) {
   const palette = personPalette(persona);
   const empresasOrdenadas = Object.keys(dataByEmpresa).sort((a, b) => {
     const ai = ORDER_EMPRESAS.indexOf(a), bi = ORDER_EMPRESAS.indexOf(b);
@@ -778,6 +861,10 @@ function PersonaColumn({ persona, dataByEmpresa, expandedProyectos, onToggleProy
             draggingId={draggingId}
             setDraggingId={setDraggingId}
             saveStatus={saveStatus}
+            projectOrder={projectOrder}
+            onReorderProjects={onReorderProjects}
+            draggingTileKey={draggingTileKey}
+            setDraggingTileKey={setDraggingTileKey}
           />
         ))}
       </div>
@@ -786,8 +873,14 @@ function PersonaColumn({ persona, dataByEmpresa, expandedProyectos, onToggleProy
 }
 
 // EmpresaBlock — sección por empresa dentro de una columna de responsable
-function EmpresaBlock({ empresa, persona, proyectos, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
-  const proyectosNombres = Object.keys(proyectos).sort();
+function EmpresaBlock({ empresa, persona, proyectos, expandedProyectos, onToggleProyecto, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus, projectOrder, onReorderProjects, draggingTileKey, setDraggingTileKey }) {
+  const allNames = Object.keys(proyectos);
+  const orderKey = `${persona}::${empresa}`;
+  const stored = (projectOrder && projectOrder[orderKey]) || [];
+  const ordered = stored.filter(p => allNames.includes(p));
+  const remaining = allNames.filter(p => !ordered.includes(p)).sort();
+  const proyectosNombres = [...ordered, ...remaining];
+
   return (
     <div className="empresa-block">
       <div className="empresa-header-mini">
@@ -795,13 +888,17 @@ function EmpresaBlock({ empresa, persona, proyectos, expandedProyectos, onToggle
         <span className="empresa-name-mini">{empresa}</span>
       </div>
       <div className="proyectos-row">
-        {proyectosNombres.map(proyecto => {
+        {proyectosNombres.map((proyecto, idx) => {
           const key = `${persona}::${empresa}::${proyecto}`;
           const expanded = !!expandedProyectos[key];
           return (
             <ProyectoTileCompact
               key={proyecto}
               proyecto={proyecto}
+              persona={persona}
+              empresa={empresa}
+              index={idx}
+              tileKey={key}
               tasks={proyectos[proyecto]}
               expanded={expanded}
               onToggle={() => onToggleProyecto(key)}
@@ -810,6 +907,9 @@ function EmpresaBlock({ empresa, persona, proyectos, expandedProyectos, onToggle
               draggingId={draggingId}
               setDraggingId={setDraggingId}
               saveStatus={saveStatus}
+              onReorder={(fromIdx, toIdx) => onReorderProjects(persona, empresa, fromIdx, toIdx, proyectosNombres)}
+              draggingTileKey={draggingTileKey}
+              setDraggingTileKey={setDraggingTileKey}
             />
           );
         })}
@@ -819,18 +919,64 @@ function EmpresaBlock({ empresa, persona, proyectos, expandedProyectos, onToggle
 }
 
 // ProyectoTileCompact — tile minimal con counts; al expandir se vuelve full-width y muestra kanban vertical
-function ProyectoTileCompact({ proyecto, tasks, expanded, onToggle, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus }) {
+function ProyectoTileCompact({ proyecto, persona, empresa, index, tileKey, tasks, expanded, onToggle, onOpenTask, onStatusChange, draggingId, setDraggingId, saveStatus, onReorder, draggingTileKey, setDraggingTileKey }) {
   const Icon = iconForProject(proyecto);
   const pen = tasks.filter(t => t.estado === "Pendiente").length;
   const proc = tasks.filter(t => t.estado === "En proceso").length;
   const sub = tasks.filter(t => t.estado === "Subido").length;
   const term = tasks.filter(t => t.estado === "Terminado").length;
   const altas = tasks.filter(t => t.prioridad === "Alta" && t.estado !== "Terminado").length;
+  const [over, setOver] = useState(false);
+  const isDragging = draggingTileKey === tileKey;
+
+  function handleDragStart(e) {
+    e.stopPropagation();
+    e.dataTransfer.setData("application/x-aurum-tile", JSON.stringify({ persona, empresa, index }));
+    e.dataTransfer.effectAllowed = "move";
+    setDraggingTileKey(tileKey);
+  }
+  function handleDragEnd() {
+    setDraggingTileKey(null);
+    setOver(false);
+  }
+  function handleDragOver(e) {
+    if (!e.dataTransfer.types.includes("application/x-aurum-tile")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOver(true);
+  }
+  function handleDragLeave() { setOver(false); }
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setOver(false);
+    const raw = e.dataTransfer.getData("application/x-aurum-tile");
+    if (!raw) return;
+    try {
+      const src = JSON.parse(raw);
+      if (src.persona !== persona || src.empresa !== empresa) return;
+      if (src.index === index) return;
+      onReorder(src.index, index);
+    } catch {}
+  }
 
   return (
-    <div className={`proyecto-tile ${expanded ? "expanded" : ""}`}>
+    <div
+      className={`proyecto-tile ${expanded ? "expanded" : ""} ${isDragging ? "tile-dragging" : ""} ${over ? "tile-drop-over" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <button onClick={onToggle} className="proyecto-tile-button" title={proyecto}>
         <div className="proyecto-tile-top">
+          <span
+            className="drag-handle"
+            draggable
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onClick={e => e.stopPropagation()}
+            title="Arrastra para reordenar"
+          >⋮⋮</span>
           <Icon size={11} />
           <span className="proyecto-tile-name">{proyecto}</span>
           {altas > 0 && !expanded && <span className="alta-mini"><Zap size={8}/>{altas}</span>}
@@ -985,9 +1131,10 @@ function GlobalSyncBadge({ status }) {
   return <span className={`g-sync g-sync-${status.type}`}>{status.text}</span>;
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, tone }) {
+  const cls = `metric-card${tone ? ` metric-${tone}` : ""}`;
   return (
-    <div className="metric-card">
+    <div className={cls}>
       <div className="metric-value">{value}</div>
       <div className="metric-label">{label}</div>
     </div>
@@ -1149,7 +1296,7 @@ function GlobalStyles() {
       /* ============ PROYECTOS — tiles compactos en una fila ============ */
       .proyectos-row {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.3rem;
         grid-auto-flow: row dense;
       }
@@ -1157,13 +1304,33 @@ function GlobalStyles() {
         background: #FFF;
         border: 1px solid #E5E5E5;
         min-width: 0;
-        transition: border-color 0.12s;
+        transition: border-color 0.12s, transform 0.12s, opacity 0.12s;
+        position: relative;
       }
       .proyecto-tile:hover { border-color: #999; }
       .proyecto-tile.expanded {
         grid-column: 1 / -1;
         border-color: #1a1a1a;
       }
+      .proyecto-tile.tile-dragging { opacity: 0.35; }
+      .proyecto-tile.tile-drop-over::before {
+        content: "";
+        position: absolute;
+        inset: -2px;
+        border: 2px dashed #1a1a1a;
+        pointer-events: none;
+        background: rgba(26,26,26,0.04);
+      }
+      .drag-handle {
+        cursor: grab;
+        color: #BBB;
+        padding: 0 0.2rem;
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .drag-handle:hover { color: #555; }
+      .drag-handle:active { cursor: grabbing; }
       .proyecto-tile-button {
         width: 100%;
         padding: 0.4rem 0.45rem;
@@ -1210,7 +1377,7 @@ function GlobalStyles() {
         padding: 0.08rem 0;
         line-height: 1.1;
       }
-      .stat-pen { background: #F3F3F3; color: #555; }
+      .stat-pen { background: #F1F5F9; color: #475569; }
       .stat-proc { background: #FEF3C7; color: #92400E; }
       .stat-sub { background: #DBEAFE; color: #1E40AF; }
       .stat-term { background: #D1FAE5; color: #065F46; }
@@ -1246,10 +1413,14 @@ function GlobalStyles() {
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #555;
       }
+      /* Colores que matchean con las metric cards del header y los stats del tile */
+      .kanban-vertical .kanban-col-pendiente .kanban-col-header { background: #F1F5F9; color: #475569; border-bottom-color: #CBD5E1; }
+      .kanban-vertical .kanban-col-en-proceso .kanban-col-header { background: #FEF3C7; color: #92400E; border-bottom-color: #FCD34D; }
+      .kanban-vertical .kanban-col-subido .kanban-col-header { background: #DBEAFE; color: #1E40AF; border-bottom-color: #93C5FD; }
+      .kanban-vertical .kanban-col-terminado .kanban-col-header { background: #D1FAE5; color: #065F46; border-bottom-color: #6EE7B7; }
       .kanban-vertical .kanban-count {
-        background: #F3F3F3;
+        background: rgba(0,0,0,0.08);
         padding: 0.05rem 0.35rem;
         min-width: 18px;
         text-align: center;
@@ -1354,9 +1525,14 @@ function GlobalStyles() {
       .link-icon { display: inline-flex; align-items: center; gap: 0.15rem; background: #DBEAFE; color: #1E40AF; padding: 0.06rem 0.3rem; font-weight: 700; }
 
       /* Metric */
-      .metric-card { background: #FFF; border: 1px solid #ECECEC; padding: 0.55rem 0.75rem; }
+      .metric-card { background: #FFF; border: 1px solid #ECECEC; padding: 0.55rem 0.75rem; border-left-width: 4px; }
+      .metric-card.metric-pendiente { border-left-color: #94A3B8; background: #F8FAFC; }
+      .metric-card.metric-en-proceso { border-left-color: #F59E0B; background: #FEF8E7; }
+      .metric-card.metric-subido { border-left-color: #3B82F6; background: #EFF4FF; }
+      .metric-card.metric-terminado { border-left-color: #10B981; background: #ECFDF5; }
       .metric-value { font-family: 'Playfair Display', serif; font-size: 1.25rem; font-weight: 700; color: #1a1a1a; line-height: 1; }
       .metric-label { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #888; margin-top: 0.15rem; }
+      .form-derived { font-size: 0.72rem; color: #555; background: #F8F8F8; padding: 0.5rem 0.65rem; border-left: 3px solid #1a1a1a; }
 
       /* Confirm modal */
       .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; display: grid; place-items: center; padding: 1rem; animation: fade 0.15s; }
