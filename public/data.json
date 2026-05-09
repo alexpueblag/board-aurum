@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "exportedAt": "2026-05-08T18:50:03.149219",
+  "exportedAt": "2026-05-08T19:00:04.289420",
   "source": "google-sheets",
   "tasks": [
     {
@@ -380,7 +380,7 @@
       "actividad": "Posts promoción cuestionario",
       "entregable": "Contenido",
       "fecha": "Viernes 17",
-      "estado": "Pendiente",
+      "estado": "Terminado",
       "prioridad": "Media",
       "observaciones": "",
       "links": []
