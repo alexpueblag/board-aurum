@@ -16,8 +16,8 @@ const SHARED_SECRET = "aurum-2026-x9k7m4q2-secreto";
 // Si quedan vacias, se usan iniciales/placeholders.
 const ASSETS = {
   logos: {
-    "Aurum Arquitectos": "",
-    "YoDesarrollo": "",
+    "Aurum Arquitectos": "https://lh3.googleusercontent.com/d/1943fi8TmKA__ec-55CIUvlWpVT2WCjCQ=w400",
+    "YoDesarrollo": "https://lh3.googleusercontent.com/d/12lob-qsynJrZudxmSYlElFXigMpuZwia=w400",
   },
   fotos: {
     "Alejandro": "",
