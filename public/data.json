@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "exportedAt": "2026-05-08T22:20:02.148514",
+  "exportedAt": "2026-05-09T08:00:03.132117",
   "source": "google-sheets",
   "tasks": [
     {
@@ -246,14 +246,14 @@
           "id": "link-1",
           "label": "Evidencia",
           "url": "https://drive.google.com/file/d/1xZwRbG2W6D3zztb6Dz-GAI9Lxv_7sJzO/view?usp=drive_link",
-          "fechaSubida": "2026-05-08",
+          "fechaSubida": "2026-05-09",
           "responsable": ""
         },
         {
           "id": "link-2",
           "label": "Evidencia",
           "url": "https://drive.google.com/file/d/1QQk8EmHooBiKaF8EoMttAvI7PyqEv2Qv/view?usp=drive_link",
-          "fechaSubida": "2026-05-08",
+          "fechaSubida": "2026-05-09",
           "responsable": ""
         }
       ]
@@ -293,14 +293,14 @@
           "id": "link-1",
           "label": "Plano Final",
           "url": "https://alexpueblag.github.io/board-aurum/",
-          "fechaSubida": "2026-05-08",
+          "fechaSubida": "2026-05-09",
           "responsable": ""
         },
         {
           "id": "link-2",
           "label": "Plano final",
           "url": "https://drive.google.com/file/d/1QQk8EmHooBiKaF8EoMttAvI7PyqEv2Qv/view?usp=drive_link",
-          "fechaSubida": "2026-05-08",
+          "fechaSubida": "2026-05-09",
           "responsable": ""
         }
       ]
