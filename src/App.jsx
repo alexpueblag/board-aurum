@@ -4,7 +4,8 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, Plus, Link2, X, RefreshCw,
   AlertCircle, CheckCircle2, Clock, Zap, Settings, Eye, EyeOff,
   Play, Archive, Calendar, LayoutGrid, BarChart3, Printer,
-  Sun, Moon, AlertTriangle, History, Trash2
+  Sun, Moon, AlertTriangle, History, Trash2,
+  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send
 } from "lucide-react";
 
 // ===================================================================
@@ -27,7 +28,7 @@ const SAVED_FLASH_MS = 1800;
 const CACHE_KEY = "aurum-cache-v5";
 const THEME_KEY = "aurum-theme";
 
-const SHEET_FIELDS = ["mes", "empresa", "proyecto", "responsable", "semana", "actividad", "entregable", "fecha", "estado", "observaciones", "prioridad", "archivada", "fechaTerminado", "color", "historial", "subtareas"];
+const SHEET_FIELDS = ["mes", "empresa", "proyecto", "responsable", "semana", "actividad", "entregable", "fecha", "estado", "observaciones", "prioridad", "archivada", "fechaTerminado", "color", "historial", "subtareas", "comentarios", "borrada"];
 const FIELD_TO_SHEET = { mesCompromiso: "mes" };
 
 // Estados — "Subido" ahora es "En revisión"
@@ -223,6 +224,19 @@ function serializeSubtareas(items) {
   return items.map(s => `${s.texto}:${s.done ? "1" : "0"}`).join("|");
 }
 
+// Comentarios — formato: "autor~fecha~texto|||autor~fecha~texto"
+function parseComentarios(str) {
+  if (!str) return [];
+  return String(str).split("|||").map((e, i) => {
+    const parts = e.split("~");
+    if (parts.length < 3) return null;
+    return { id: i, autor: parts[0].trim(), fecha: parts[1].trim(), texto: parts.slice(2).join("~").trim() };
+  }).filter(c => c && c.texto);
+}
+function serializeComentarios(items) {
+  return items.map(c => `${c.autor}~${c.fecha}~${c.texto.replace(/[~|]/g, " ")}`).join("|||");
+}
+
 // Métricas
 function calcProjectMetrics(tasksInProject) {
   const total = tasksInProject.length;
@@ -311,6 +325,8 @@ export default function Board() {
   const [showForm, setShowForm] = useState(false);
   const [newTask, setNewTask] = useState(emptyTask());
   const [linkDraft, setLinkDraft] = useState({ label: "", url: "" });
+  const [comentDraft, setComentDraft] = useState("");
+  const [comentAutor, setComentAutor] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [expandedProyectos, setExpandedProyectos] = useState({});
   const [expandedProjectRows, setExpandedProjectRows] = useState({});
@@ -331,6 +347,7 @@ export default function Board() {
   const [showArchived, setShowArchived] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [presenting, setPresenting] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [metricsMode, setMetricsMode] = useState("global"); // global | empresa
   const [personaPanel, setPersonaPanel] = useState(null); // nombre de persona para dashboard
   const [showExport, setShowExport] = useState(false);
@@ -498,6 +515,17 @@ export default function Board() {
     queueChange(id, { subtareas: serialized }, false);
   }
 
+  // Comentarios
+  function addComentario(id, autor, texto) {
+    const t = tasksRef.current.find(t => t.id === id);
+    if (!t || !texto.trim()) return;
+    const actuales = parseComentarios(t.comentarios);
+    const nuevo = { autor: autor || "—", fecha: todayStamp(), texto: texto.trim() };
+    const serialized = serializeComentarios([...actuales, nuevo]);
+    setTasks(prev => prev.map(x => x.id === id ? { ...x, comentarios: serialized } : x));
+    queueChange(id, { comentarios: serialized }, true);
+  }
+
   async function addTask() {
     if (!newTask.proyecto.trim() || !newTask.responsable.trim() || !newTask.actividad.trim()) {
       alert("Completa proyecto, responsable y actividad."); return;
@@ -557,13 +585,27 @@ export default function Board() {
     } catch (err) { setSaveStatus(p => ({ ...p, [taskId]: "error", [`${taskId}_err`]: err.message })); }
   }
 
+  // Borrado SUAVE: marca borrada=true (va a la papelera, no se pierde)
   async function deleteTask(taskId) {
     const t = tasksRef.current.find(t => t.id === taskId);
-    const ok = await askConfirm({ title: "Eliminar tarea", message: `Vas a eliminar "${t?.actividad || taskId}" del Sheet. Esta acción es definitiva.`, confirmLabel: "Sí, eliminar definitivamente" });
+    const ok = await askConfirm({ title: "Enviar a papelera", message: `"${t?.actividad || taskId}" se moverá a la papelera. Podrás recuperarla después.`, confirmLabel: "Mover a papelera", danger: false });
+    if (!ok) return;
+    setSelectedTaskId(null);
+    updateTaskField(taskId, { borrada: true }, true);
+  }
+
+  // Restaurar desde la papelera
+  function restoreTask(taskId) {
+    updateTaskField(taskId, { borrada: false }, true);
+  }
+
+  // Eliminar DEFINITIVO (borra la fila del Sheet de verdad)
+  async function deleteForever(taskId) {
+    const t = tasksRef.current.find(t => t.id === taskId);
+    const ok = await askConfirm({ title: "Eliminar para siempre", message: `"${t?.actividad || taskId}" se borrará del Sheet permanentemente. Esto NO se puede deshacer.`, confirmLabel: "Sí, eliminar para siempre" });
     if (!ok) return;
     const backup = t;
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    setSelectedTaskId(null);
     try { await apiCall("delete", { id: taskId }); delete recentlyModified.current[taskId]; }
     catch (err) { if (backup) setTasks(prev => [backup, ...prev]); alert("Error al eliminar: " + err.message); }
   }
@@ -600,6 +642,7 @@ export default function Board() {
   const filteredTasks = useMemo(() => {
     const term = filters.search.trim().toLowerCase();
     return tasks.filter(t => {
+      if (t.borrada) return false;
       if (!showArchived && t.archivada) return false;
       if (filters.empresa !== "Todas" && t.empresa !== filters.empresa) return false;
       if (filters.proyecto !== "Todos" && t.proyecto !== filters.proyecto) return false;
@@ -612,6 +655,8 @@ export default function Board() {
       return true;
     });
   }, [tasks, filters, showArchived]);
+
+  const trashedTasks = useMemo(() => tasks.filter(t => t.borrada), [tasks]);
 
   const hierarchy = useMemo(() => {
     const h = {};
@@ -796,6 +841,34 @@ export default function Board() {
                   </ol>
                 )}
               </section>
+
+              {/* COMENTARIOS */}
+              <section className="yo-card p-5">
+                <h2 className="yo-eyebrow mb-4"><MessageSquare size={11} style={{display:'inline',marginRight:4}}/>Comentarios</h2>
+                <div className="comentarios-list">
+                  {parseComentarios(selectedTask.comentarios).length === 0 && <p className="text-sm subtle">Sin comentarios todavía.</p>}
+                  {parseComentarios(selectedTask.comentarios).map(c => {
+                    const pal = personPalette(c.autor, colorOverrides);
+                    return (
+                      <div key={c.id} className="comentario-item">
+                        <div className="comentario-avatar" style={{ background: pal.main }}>{getInitials(c.autor)}</div>
+                        <div className="comentario-body">
+                          <div className="comentario-head"><span className="comentario-autor">{c.autor}</span><span className="comentario-fecha">{fechaTerminadoCorta(c.fecha) || c.fecha}</span></div>
+                          <p className="comentario-texto">{c.texto}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 space-y-2 border-t border-stone-200 pt-4">
+                  <select className="input" value={comentAutor} onChange={e => setComentAutor(e.target.value)}>
+                    <option value="">¿Quién comenta?</option>
+                    {allPersonas.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <textarea className="input" value={comentDraft} onChange={e => setComentDraft(e.target.value)} placeholder="Escribe un comentario…" style={{ minHeight: 60 }} />
+                  <button onClick={() => { if (comentAutor && comentDraft.trim()) { addComentario(selectedTask.id, comentAutor, comentDraft); setComentDraft(""); } else { alert("Elige quién comenta y escribe algo."); } }} className="yo-btn-primary w-full"><Send size={14}/>Comentar</button>
+                </div>
+              </section>
             </aside>
           </main>
         </div>
@@ -836,6 +909,7 @@ export default function Board() {
               </label>
               <button onClick={archiveAllDone} className="yo-btn-secondary" title="Archivar todas las terminadas"><Archive size={12}/>Limpiar</button>
               <button onClick={() => setShowExport(true)} className="yo-btn-secondary" title="Exportar / imprimir"><Printer size={12}/></button>
+              <button onClick={() => setShowTrash(true)} className="yo-btn-secondary" title="Papelera" style={{ position: "relative" }}><Trash2 size={12}/>{trashedTasks.length > 0 && <span className="trash-cnt">{trashedTasks.length}</span>}</button>
               <button onClick={() => setShowSettings(true)} className="yo-btn-secondary" title="Ajustes de colores"><Settings size={12}/></button>
               <button onClick={() => setPresenting(true)} className="yo-btn-secondary" title="Modo presentación"><Play size={12}/></button>
               <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="yo-btn-secondary" title="Tema claro/oscuro">{theme === "dark" ? <Sun size={12}/> : <Moon size={12}/>}</button>
@@ -942,6 +1016,12 @@ export default function Board() {
           {currentView === "calendario" && (
             <CalendarView tasks={filteredTasks} cursor={calCursor} setCursor={setCalCursor} setSelectedTaskId={setSelectedTaskId} colorOverrides={colorOverrides} />
           )}
+          {currentView === "timeline" && (
+            <TimelineView projectsList={projectsList} setSelectedTaskId={setSelectedTaskId} colorOverrides={colorOverrides} />
+          )}
+          {currentView === "misemana" && (
+            <MiSemanaView tasks={filteredTasks} setSelectedTaskId={setSelectedTaskId} colorOverrides={colorOverrides} filtroResp={filters.responsable} setFiltroResp={(r) => setFilters({ ...filters, responsable: r })} responsables={responsables} />
+          )}
         </main>
       </div>
 
@@ -949,6 +1029,7 @@ export default function Board() {
       {personaPanel && <PersonaDashboard persona={personaPanel} tasks={tasks} colorOverrides={colorOverrides} onClose={() => setPersonaPanel(null)} onOpenTask={(id) => { setPersonaPanel(null); setSelectedTaskId(id); }} />}
       {showExport && <ExportView tasks={filteredTasks} metricsByEmpresa={metricsByEmpresa} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} weekStats={weekStats} onClose={() => setShowExport(false)} />}
       {presenting && <PresentationMode tasks={tasks} weekStats={weekStats} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} colorOverrides={colorOverrides} onClose={() => setPresenting(false)} />}
+      {showTrash && <TrashView tasks={trashedTasks} colorOverrides={colorOverrides} onRestore={restoreTask} onDeleteForever={deleteForever} onClose={() => setShowTrash(false)} />}
 
       <ConfirmModal dialog={confirmDialog} />
       <GlobalStyles />
@@ -965,6 +1046,8 @@ function ViewSelector({ value, onChange }) {
     { id: "proyectos", label: "Proyectos", Icon: Folder },
     { id: "estados", label: "Estados", Icon: LayoutGrid },
     { id: "calendario", label: "Calendario", Icon: Calendar },
+    { id: "timeline", label: "Timeline", Icon: GanttChartSquare },
+    { id: "misemana", label: "Mi semana", Icon: CalendarClock },
   ];
   return (
     <div className="view-selector">
@@ -1567,6 +1650,177 @@ function ConfirmModal({ dialog }) {
 // ===================================================================
 // ESTILOS GLOBALES
 // ===================================================================
+// ===================================================================
+// VISTA: TIMELINE / GANTT
+// ===================================================================
+function TimelineView({ projectsList, setSelectedTaskId, colorOverrides }) {
+  const withDates = projectsList.map(p => {
+    const ds = p.tasks.map(t => commitmentDate(t)).filter(Boolean);
+    if (ds.length === 0) return { ...p, min: null, max: null };
+    return { ...p, min: new Date(Math.min(...ds)), max: new Date(Math.max(...ds)) };
+  }).filter(p => p.min);
+
+  if (withDates.length === 0) {
+    return <div className="yo-card p-8 text-center subtle">No hay tareas con fecha para mostrar en el timeline. Asígnale fechas a las tareas y aparecerán aquí.</div>;
+  }
+
+  const allMin = new Date(Math.min(...withDates.map(p => p.min.getTime())));
+  const allMax = new Date(Math.max(...withDates.map(p => p.max.getTime())));
+  const span = Math.max(1, allMax - allMin);
+
+  // Marcas de mes
+  const months = [];
+  const cur = new Date(allMin.getFullYear(), allMin.getMonth(), 1);
+  while (cur <= allMax) {
+    const left = Math.max(0, (cur - allMin) / span * 100);
+    months.push({ label: `${MESES[cur.getMonth()].slice(0,3)} ${String(cur.getFullYear()).slice(2)}`, left });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  const ordered = [...withDates].sort((a, b) => a.min - b.min);
+
+  return (
+    <div className="timeline-view yo-card">
+      <div className="tl-axis">
+        <div className="tl-axis-label" />
+        <div className="tl-axis-track">
+          {months.map((m, i) => <span key={i} className="tl-month" style={{ left: `${m.left}%` }}>{m.label}</span>)}
+        </div>
+      </div>
+      {ordered.map(p => {
+        const left = (p.min - allMin) / span * 100;
+        const width = Math.max(2, (p.max - p.min) / span * 100);
+        return (
+          <div key={p.key} className="tl-row">
+            <div className="tl-row-label" title={p.proyecto}>
+              <span className={`risk-dot risk-dot-${p.metrics.risk}`} />
+              <span className="tl-row-name">{p.proyecto}</span>
+              <span className="tl-row-pct">{p.metrics.pct}%</span>
+            </div>
+            <div className="tl-row-track">
+              <div className={`tl-bar tl-bar-${p.metrics.risk}`} style={{ left: `${left}%`, width: `${width}%` }}>
+                <div className="tl-bar-fill" style={{ width: `${p.metrics.pct}%` }} />
+              </div>
+              {p.tasks.map(t => {
+                const d = commitmentDate(t);
+                if (!d) return null;
+                const dl = (d - allMin) / span * 100;
+                return <button key={t.id} className={`tl-dot est-dot-${estadoSlug(t.estado)}`} style={{ left: `${dl}%` }} title={`${t.actividad} · ${fechaCorta(t)}`} onClick={() => setSelectedTaskId(t.id)} />;
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <div className="tl-legend">
+        <span><span className="est-dot-pendiente tl-dot-legend" /> Pendiente</span>
+        <span><span className="est-dot-en-proceso tl-dot-legend" /> En proceso</span>
+        <span><span className="est-dot-en-revision tl-dot-legend" /> En revisión</span>
+        <span><span className="est-dot-terminado tl-dot-legend" /> Terminado</span>
+      </div>
+    </div>
+  );
+}
+
+// ===================================================================
+// VISTA: MI SEMANA
+// ===================================================================
+function MiSemanaView({ tasks, setSelectedTaskId, colorOverrides, filtroResp, setFiltroResp, responsables }) {
+  const semana = tasks.filter(t => {
+    if (t.estado === "Terminado") return false;
+    const d = daysUntil(t);
+    return d != null && d >= 0 && d <= 7;
+  }).sort((a, b) => daysUntil(a) - daysUntil(b));
+
+  const atrasadas = tasks.filter(t => t.estado !== "Terminado" && isOverdue(t)).sort((a, b) => daysUntil(a) - daysUntil(b));
+
+  return (
+    <div className="misemana-view">
+      <div className="ms-toolbar">
+        <div className="ms-title">
+          <CalendarClock size={18} />
+          <div>
+            <h2 className="ms-h2">Mi semana</h2>
+            <p className="ms-sub">Lo que vence en los próximos 7 días</p>
+          </div>
+        </div>
+        <select className="input ms-select" value={filtroResp} onChange={e => setFiltroResp(e.target.value)}>
+          {responsables.map(r => <option key={r}>{r}</option>)}
+        </select>
+      </div>
+
+      {atrasadas.length > 0 && (
+        <div className="ms-section ms-section-danger">
+          <h3 className="ms-section-lbl"><AlertTriangle size={12} style={{display:'inline',marginRight:4}}/>Atrasadas ({atrasadas.length})</h3>
+          {atrasadas.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} colorOverrides={colorOverrides} />)}
+        </div>
+      )}
+
+      <div className="ms-section">
+        <h3 className="ms-section-lbl">Esta semana ({semana.length})</h3>
+        {semana.length === 0 ? <p className="subtle p-4 text-center">Nada vence esta semana. 🎉</p> :
+          semana.map(t => <MiSemanaRow key={t.id} task={t} onOpen={() => setSelectedTaskId(t.id)} colorOverrides={colorOverrides} />)}
+      </div>
+    </div>
+  );
+}
+
+function MiSemanaRow({ task, onOpen, colorOverrides }) {
+  const pal = personPalette(task.responsable, colorOverrides);
+  return (
+    <button onClick={onOpen} className={`ms-row ${isOverdue(task) ? "overdue" : ""}`}>
+      <div className="ms-row-due"><DeadlineBadge task={task} /></div>
+      <div className="ms-row-main">
+        <div className="ms-row-title">{task.actividad}</div>
+        <div className="ms-row-meta">{task.proyecto} · {task.empresa}</div>
+      </div>
+      <div className="ms-row-asg">
+        <PersonaAvatar name={task.responsable} size={22} colorOverrides={colorOverrides} />
+        <span style={{ color: pal.text }}>{(task.responsable || "").split(" ")[0]}</span>
+      </div>
+      <EstadoChip estado={task.estado} mini />
+    </button>
+  );
+}
+
+// ===================================================================
+// VISTA: PAPELERA
+// ===================================================================
+function TrashView({ tasks, colorOverrides, onRestore, onDeleteForever, onClose }) {
+  return (
+    <div className="settings-overlay" onClick={onClose}>
+      <div className="settings-box trash-box" onClick={e => e.stopPropagation()}>
+        <header className="settings-header">
+          <div>
+            <p className="yo-eyebrow"><Trash2 size={11} style={{display:'inline',marginRight:4}}/>Papelera</p>
+            <h3 className="settings-title">Tareas borradas</h3>
+            <p className="settings-sub">Restaura lo que borraste por error, o elimínalo para siempre.</p>
+          </div>
+          <button onClick={onClose} className="btn-ghost"><X size={14}/></button>
+        </header>
+        <div className="settings-body">
+          {tasks.length === 0 ? (
+            <p className="subtle p-6 text-center">La papelera está vacía.</p>
+          ) : tasks.map(t => {
+            const pal = personPalette(t.responsable, colorOverrides);
+            return (
+              <div key={t.id} className="trash-row">
+                <div className="trash-info">
+                  <div className="trash-title">{t.actividad}</div>
+                  <div className="trash-meta">{t.proyecto} · {t.empresa} · <span style={{ color: pal.text }}>{t.responsable}</span></div>
+                </div>
+                <div className="trash-actions">
+                  <button onClick={() => onRestore(t.id)} className="trash-restore"><RotateCcw size={12}/>Restaurar</button>
+                  <button onClick={() => onDeleteForever(t.id)} className="trash-forever"><Trash2 size={12}/>Eliminar</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GlobalStyles() {
   return (
     <style>{`
@@ -1981,6 +2235,129 @@ function GlobalStyles() {
       .dark .settings-box, .dark .dash-box, .dark .confirm-box { background: #1a1d24; color: #e5e7eb; }
       .dark .btn-ghost { color: #aaa; }
       .dark .form-derived { background: #15171d; color: #bbb; }
+
+      /* ============ ESTADO DOTS (bitácora + timeline) ============ */
+      .bitacora-dot, .est-dot-pendiente, .est-dot-en-proceso, .est-dot-en-revision, .est-dot-terminado { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+      .est-dot-pendiente { background: #94A3B8; } .est-dot-en-proceso { background: #F59E0B; } .est-dot-en-revision { background: #3B82F6; } .est-dot-terminado { background: #10B981; }
+
+      /* ============ TIMELINE / GANTT ============ */
+      .timeline-view { padding: 1rem 1.2rem; overflow-x: auto; }
+      .tl-axis { display: flex; align-items: flex-end; margin-bottom: 0.6rem; height: 22px; }
+      .tl-axis-label { flex: 0 0 200px; }
+      .tl-axis-track { position: relative; flex: 1; height: 100%; border-bottom: 1px solid #E5E5E5; }
+      .tl-month { position: absolute; bottom: 2px; font-size: 0.62rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.06em; transform: translateX(2px); }
+      .tl-row { display: flex; align-items: center; min-height: 38px; border-bottom: 1px solid #F3F3F3; }
+      .tl-row-label { flex: 0 0 200px; display: flex; align-items: center; gap: 0.4rem; padding-right: 0.6rem; min-width: 0; }
+      .tl-row-name { font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+      .tl-row-pct { font-size: 0.66rem; font-weight: 700; color: #999; }
+      .tl-row-track { position: relative; flex: 1; height: 28px; }
+      .tl-bar { position: absolute; top: 7px; height: 14px; border-radius: 7px; background: #E5E7EB; min-width: 8px; overflow: hidden; }
+      .tl-bar-fill { height: 100%; background: rgba(0,0,0,0.18); }
+      .tl-bar-critico { background: #FECACA; } .tl-bar-critico .tl-bar-fill { background: #DC2626; }
+      .tl-bar-riesgo { background: #FED7AA; } .tl-bar-riesgo .tl-bar-fill { background: #F59E0B; }
+      .tl-bar-atencion { background: #BFDBFE; } .tl-bar-atencion .tl-bar-fill { background: #3B82F6; }
+      .tl-bar-ok { background: #BBF7D0; } .tl-bar-ok .tl-bar-fill { background: #10B981; }
+      .tl-dot { position: absolute; top: 9px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; cursor: pointer; transform: translateX(-50%); box-shadow: 0 1px 3px rgba(0,0,0,0.25); padding: 0; }
+      .tl-dot:hover { transform: translateX(-50%) scale(1.35); z-index: 5; }
+      .tl-legend { display: flex; gap: 1.2rem; margin-top: 1rem; padding-top: 0.7rem; border-top: 1px solid #ECECEC; font-size: 0.68rem; color: #777; font-weight: 600; }
+      .tl-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+      .tl-dot-legend { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+
+      /* ============ MI SEMANA ============ */
+      .misemana-view { display: flex; flex-direction: column; gap: 1rem; }
+      .ms-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; background: #FFF; border: 1px solid #ECECEC; padding: 0.9rem 1.1rem; border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+      .ms-title { display: flex; align-items: center; gap: 0.7rem; }
+      .ms-h2 { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; margin: 0; }
+      .ms-sub { font-size: 0.75rem; color: #888; margin: 0; }
+      .ms-select { max-width: 220px; }
+      .ms-section { background: #FFF; border: 1px solid #ECECEC; padding: 0.9rem 1.1rem; border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+      .ms-section-danger { border-color: #FCA5A5; background: #FFF8F8; }
+      .ms-section-lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #888; margin: 0 0 0.6rem; }
+      .ms-section-danger .ms-section-lbl { color: #991B1B; }
+      .ms-row { display: grid; grid-template-columns: 56px 1fr 130px 90px; gap: 0.8rem; align-items: center; width: 100%; padding: 0.55rem 0.6rem; background: #FFF; border: 1px solid #ECECEC; border-radius: 5px; cursor: pointer; text-align: left; margin-bottom: 0.4rem; transition: border-color 0.12s, transform 0.12s; }
+      .ms-row:last-child { margin-bottom: 0; }
+      .ms-row:hover { border-color: #1a1a1a; transform: translateX(2px); }
+      .ms-row.overdue { border-left: 3px solid #DC2626; }
+      .ms-row-title { font-size: 0.85rem; font-weight: 600; }
+      .ms-row-meta { font-size: 0.7rem; color: #888; }
+      .ms-row-asg { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; font-weight: 600; }
+      @media (max-width:640px){ .ms-row{ grid-template-columns: 50px 1fr; } .ms-row-asg,.ms-row .est-chip{ display:none; } }
+
+      /* ============ COMENTARIOS ============ */
+      .comentarios-list { display: flex; flex-direction: column; gap: 0.8rem; }
+      .comentario-item { display: flex; gap: 0.6rem; }
+      .comentario-avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 0.68rem; flex-shrink: 0; }
+      .comentario-body { flex: 1; min-width: 0; }
+      .comentario-head { display: flex; align-items: baseline; gap: 0.5rem; }
+      .comentario-autor { font-size: 0.78rem; font-weight: 700; }
+      .comentario-fecha { font-size: 0.66rem; color: #999; }
+      .comentario-texto { font-size: 0.82rem; color: #444; margin: 0.2rem 0 0; line-height: 1.4; white-space: pre-wrap; }
+
+      /* ============ PAPELERA ============ */
+      .trash-cnt { position: absolute; top: -5px; right: -5px; background: #DC2626; color: #fff; font-size: 0.55rem; font-weight: 700; min-width: 15px; height: 15px; border-radius: 8px; display: grid; place-items: center; padding: 0 3px; }
+      .trash-box { max-width: 620px; }
+      .trash-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.8rem 1.5rem; border-bottom: 1px solid #F3F3F3; }
+      .trash-info { min-width: 0; }
+      .trash-title { font-size: 0.88rem; font-weight: 700; }
+      .trash-meta { font-size: 0.72rem; color: #888; }
+      .trash-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+      .trash-restore { display: inline-flex; align-items: center; gap: 0.3rem; background: #1a1a1a; color: #fff; border: none; cursor: pointer; padding: 0.4rem 0.7rem; font-size: 0.72rem; font-weight: 600; border-radius: 4px; }
+      .trash-forever { display: inline-flex; align-items: center; gap: 0.3rem; background: #fff; color: #b91c1c; border: 1px solid #fca5a5; cursor: pointer; padding: 0.4rem 0.7rem; font-size: 0.72rem; font-weight: 600; border-radius: 4px; }
+      .trash-forever:hover { background: #fef2f2; }
+
+      /* ============================================================ */
+      /* ===========   MEJORA ESTÉTICA v2 (refinamiento)  =========== */
+      /* ============================================================ */
+      :root { --radius: 7px; --shadow-sm: 0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.06); --shadow-md: 0 4px 16px rgba(15,23,42,0.10); --accent: #B08D57; }
+
+      .brand-shell { background: radial-gradient(1200px 600px at 100% -10%, #FBF8F3 0%, transparent 60%), linear-gradient(180deg, #FFFFFF 0%, #F6F2EC 100%); }
+
+      /* Cards y superficies: bordes redondeados sutiles + sombra suave */
+      .yo-card, .yo-header, .persona-column, .metric-card, .brief, .proj-row, .estado-col, .calendar-view,
+      .empresa-metric-block, .ms-toolbar, .ms-section, .timeline-view { border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+      .proyecto-tile { border-radius: 5px; }
+      .kanban-card, .estado-card, .task-row, .risk-card { border-radius: 5px; transition: border-color .14s, transform .14s, box-shadow .14s; }
+
+      /* Header con un acento dorado sutil arriba */
+      .yo-header { border-top: 3px solid var(--accent); }
+
+      /* Botones más suaves */
+      .yo-btn-primary, .yo-btn-secondary, .yo-btn-danger { border-radius: 5px; transition: all .14s ease; }
+      .yo-btn-primary:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+      .yo-btn-secondary:hover { border-color: #bbb; }
+      .view-selector { border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-sm); }
+      .input { border-radius: 5px; transition: border-color .14s, box-shadow .14s; }
+      .input:focus { box-shadow: 0 0 0 3px rgba(176,141,87,0.12); border-color: var(--accent); }
+
+      /* Hover de tarjetas: elevación más marcada y elegante */
+      .kanban-vertical .kanban-card:hover, .estado-card:hover, .risk-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+      /* Columnas de persona: header con degradado suave + barra superior más fina y elegante */
+      .persona-column { overflow: hidden; }
+      .persona-column-header { border-top-left-radius: var(--radius); border-top-right-radius: var(--radius); }
+
+      /* Métricas: número con un poco más de presencia */
+      .metric-value, .brief-stat-n { letter-spacing: -0.02em; }
+
+      /* Chips y pills: esquinas redondeadas */
+      .est-chip, .pri-chip, .deadline-badge, .terminada-pill, .archivada-pill, .urgent-pill, .alta-mini, .overdue-counter, .archive-toggle, .link-icon { border-radius: 999px; }
+      .est-chip, .pri-chip { padding-left: 0.6rem; padding-right: 0.6rem; }
+
+      /* Scroll más discreto */
+      .timeline-view::-webkit-scrollbar, .settings-body::-webkit-scrollbar, .dash-box::-webkit-scrollbar { height: 8px; width: 8px; }
+      .timeline-view::-webkit-scrollbar-thumb, .settings-body::-webkit-scrollbar-thumb, .dash-box::-webkit-scrollbar-thumb { background: #d8d2c8; border-radius: 4px; }
+
+      /* Modales: entrada suave */
+      .settings-box, .dash-box, .confirm-box, .trash-box { border-radius: 10px; animation: pop .16s ease-out; }
+      @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
+      .settings-overlay, .confirm-overlay, .export-overlay { backdrop-filter: blur(2px); }
+
+      /* Modo oscuro: ajustar el acento y fondos al refinamiento */
+      .dark.brand-shell { background: radial-gradient(1000px 500px at 100% -10%, #1b1f27 0%, transparent 60%), #0f1115; }
+      .dark .yo-card, .dark .yo-header, .dark .persona-column, .dark .kanban-card, .dark .estado-card, .dark .proj-row, .dark .task-row, .dark .brief, .dark .calendar-view, .dark .metric-card, .dark .ms-toolbar, .dark .ms-section, .dark .timeline-view, .dark .empresa-metric-block, .dark .risk-card { box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+      .dark .ms-section-danger { background: #2a1416; }
+      .dark .comentario-texto { color: #cbd0d8; }
+      .dark .input:focus { box-shadow: 0 0 0 3px rgba(176,141,87,0.18); }
     `}</style>
   );
 }
