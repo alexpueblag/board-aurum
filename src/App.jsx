@@ -332,14 +332,14 @@ const DIAG_RULES = {
 };
 
 function _isOverdueTask(t) {
-  const d = daysUntil(t.fecha);
+  const d = daysUntil(t);
   return d !== null && d < 0 && normalizeEstado(t.estado) !== "Terminado";
 }
 
 function _sortByUrgency(tasks) {
   return [...tasks].sort((a, b) => {
-    const da = daysUntil(a.fecha);
-    const db = daysUntil(b.fecha);
+    const da = daysUntil(a);
+    const db = daysUntil(b);
     if (da === null && db === null) return 0;
     if (da === null) return 1;
     if (db === null) return -1;
@@ -376,7 +376,7 @@ function runDiagnostics(allTasks, mode, params = {}) {
     return _diagTotal(active);
   }
   if (mode === "proyecto") {
-    const tasks = active.filter(t => `${t.empresa}|${t.proyecto}` === params.projectKey);
+    const tasks = active.filter(t => `${t.empresa}::${t.proyecto}` === params.projectKey);
     return _diagProyecto(tasks, params.empresa, params.proyecto);
   }
   if (mode === "persona") {
@@ -390,7 +390,7 @@ function _diagEstado(tasks, estado) {
   const insights = [], actions = [];
   const overdue = tasks.filter(_isOverdueTask).length;
   const alta = tasks.filter(t => t.prioridad === "Alta").length;
-  const dueSoon = tasks.filter(t => { const d = daysUntil(t.fecha); return d !== null && d >= 0 && d <= 7; }).length;
+  const dueSoon = tasks.filter(t => { const d = daysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
   const topProj = _topN(_groupCount(tasks, "proyecto"), 3);
   const topPers = _topN(_groupCount(tasks, "responsable"), 3);
 
@@ -415,8 +415,8 @@ function _diagAtrasadas(tasks) {
 
   const sorted = _sortByUrgency(tasks);
   const masVieja = sorted[0];
-  const diasVieja = Math.abs(daysUntil(masVieja.fecha) || 0);
-  const viejas = tasks.filter(t => Math.abs(daysUntil(t.fecha) || 0) > DIAG_RULES.VIEJA_DIAS).length;
+  const diasVieja = Math.abs(daysUntil(masVieja) || 0);
+  const viejas = tasks.filter(t => Math.abs(daysUntil(t) || 0) > DIAG_RULES.VIEJA_DIAS).length;
   const topProj = _topN(_groupCount(tasks, "proyecto"), 3);
   const topPers = _topN(_groupCount(tasks, "responsable"), 3);
 
@@ -464,7 +464,7 @@ function _diagTotal(tasks) {
   const insights = [], actions = [];
   const overdue = tasks.filter(_isOverdueTask).length;
   const open = tasks.filter(t => normalizeEstado(t.estado) !== "Terminado").length;
-  const dueSoon = tasks.filter(t => { const d = daysUntil(t.fecha); return d !== null && d >= 0 && d <= 7; }).length;
+  const dueSoon = tasks.filter(t => { const d = daysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
 
   insights.push({ icon: "folder", text: `${tasks.length} tareas activas en el board` });
   insights.push({ icon: "clock", text: `${open} abiertas, ${tasks.length - open} terminadas` });
@@ -488,12 +488,12 @@ function _diagProyecto(tasks, empresa, proyecto) {
   let risk = "ok";
   if (overdue.length >= DIAG_RULES.PROYECTO_CRITICO_ATRASOS || overduePct >= DIAG_RULES.PROYECTO_CRITICO_PCT) risk = "crítico";
   else if (overdue.length >= DIAG_RULES.PROYECTO_RIESGO_ATRASOS) risk = "riesgo";
-  else if (tasks.filter(t => { const d = daysUntil(t.fecha); return d !== null && d >= 0 && d <= 7; }).length >= DIAG_RULES.ATENCION_VENCEN_7D) risk = "atención";
+  else if (tasks.filter(t => { const d = daysUntil(t); return d !== null && d >= 0 && d <= 7; }).length >= DIAG_RULES.ATENCION_VENCEN_7D) risk = "atención";
 
   insights.push({ icon: "check", text: `${pct}% completado (${term}/${tasks.length})` });
   if (overdue.length > 0) {
     const masVieja = _sortByUrgency(overdue)[0];
-    const dias = Math.abs(daysUntil(masVieja.fecha) || 0);
+    const dias = Math.abs(daysUntil(masVieja) || 0);
     insights.push({ icon: "alert", text: `${overdue.length} atrasadas · la más vieja ${dias} días ("${masVieja.actividad}")` });
   }
   const byPers = _topN(_groupCount(open, "responsable"), 3);
@@ -512,7 +512,7 @@ function _diagPersona(tasks, persona) {
   const open = tasks.filter(t => normalizeEstado(t.estado) !== "Terminado");
   const overdue = tasks.filter(_isOverdueTask);
   const term = tasks.filter(t => normalizeEstado(t.estado) === "Terminado").length;
-  const dueSoon = tasks.filter(t => { const d = daysUntil(t.fecha); return d !== null && d >= 0 && d <= 7; }).length;
+  const dueSoon = tasks.filter(t => { const d = daysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
 
   let estado = "ok";
   if (open.length >= DIAG_RULES.PERSONA_SOBRECARGADA) estado = "sobrecargada";
@@ -1823,7 +1823,7 @@ function ExportView({ tasks, metricsByEmpresa, riskyProjects, weekStats, project
                   <p className="export-exec-persona-empty">Sin tareas abiertas. ✓</p>
                 ) : (
                   ordenadas.slice(0, 15).map(t => {
-                    const d = daysUntil(t.fecha);
+                    const d = daysUntil(t);
                     const isLate = d !== null && d < 0;
                     const isSoon = d !== null && d >= 0 && d <= 7;
                     return (
@@ -1984,7 +1984,7 @@ function PresentLoad({ tasks, colorOverrides }) {
   );
 }
 function PresentUpcoming({ tasks, colorOverrides }) {
-  const upcoming = tasks.filter(t => { if (t.estado === "Terminado" || t.archivada || t.borrada) return false; const d = daysUntil(t.fecha); return d != null && d >= 0 && d <= 7; }).sort((a, b) => daysUntil(a.fecha) - daysUntil(b.fecha)).slice(0, 8);
+  const upcoming = tasks.filter(t => { if (t.estado === "Terminado" || t.archivada || t.borrada) return false; const d = daysUntil(t); return d != null && d >= 0 && d <= 7; }).sort((a, b) => daysUntil(a) - daysUntil(b)).slice(0, 8);
   if (upcoming.length === 0) return <div className="present-empty">Sin entregas próximas.</div>;
   return (<div className="present-list">{upcoming.map(t => { const palette = personPalette(t.responsable, colorOverrides); return (<div key={t.id} className="pl-row"><div className="pl-due"><DeadlineBadge task={t} compact /></div><div className="pl-title">{t.actividad}</div><div className="pl-proj">{t.proyecto}</div><div className="pl-asg" style={{ color: palette.text }}><PersonaAvatar name={t.responsable} size={20} colorOverrides={colorOverrides} />{(t.responsable || "").split(" ")[0]}</div></div>); })}</div>);
 }
@@ -2228,8 +2228,8 @@ function TrashView({ tasks, colorOverrides, onRestore, onClose }) {
 // PANEL DE DIAGNÓSTICO (deploy 4) — modal con insights + tareas
 // ===================================================================
 function DiagnosticPanel({ open, mode, params, tasks, colorOverrides, onTaskClick, onClose }) {
+  const result = useMemo(() => open ? runDiagnostics(tasks, mode, params) : { title: "", tasks: [], insights: [], actions: [] }, [open, tasks, mode, params]);
   if (!open) return null;
-  const result = useMemo(() => runDiagnostics(tasks, mode, params), [tasks, mode, params]);
   const InsightIcon = ({ icon }) => {
     const map = { alert: AlertTriangle, zap: Zap, clock: Clock, folder: Folder, users: Users, check: CheckCircle2, building: Building2 };
     const Comp = map[icon] || CheckCircle2;
@@ -2264,7 +2264,7 @@ function DiagnosticPanel({ open, mode, params, tasks, colorOverrides, onTaskClic
               <p className="diag-tasks-lbl">Tareas ({result.tasks.length})</p>
               {result.tasks.slice(0, 20).map(t => {
                 const pal = personPalette(t.responsable, colorOverrides);
-                const dDay = daysUntil(t.fecha);
+                const dDay = daysUntil(t);
                 const isLate = dDay !== null && dDay < 0;
                 return (
                   <button key={t.id} className="diag-task" onClick={() => { onTaskClick && onTaskClick(t.id); onClose(); }}>
@@ -2273,7 +2273,7 @@ function DiagnosticPanel({ open, mode, params, tasks, colorOverrides, onTaskClic
                       <div className="diag-task-meta">{t.proyecto} · <span style={{ color: pal.text }}>{t.responsable}</span></div>
                     </div>
                     <div className="diag-task-right">
-                      <span className={`est-chip mini est-${slugify(t.estado)}`}>{t.estado}</span>
+                      <span className={`est-chip mini est-${estadoSlug(t.estado)}`}>{t.estado}</span>
                       {dDay !== null && <span className={`deadline-c ${isLate ? 'deadline-red' : dDay <= 7 ? 'deadline-orange' : 'deadline-green'}`}>{isLate ? `${Math.abs(dDay)}d vencida` : `${dDay}d`}</span>}
                     </div>
                   </button>
