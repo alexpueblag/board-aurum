@@ -317,6 +317,229 @@ function patchToSheet(patch) {
 // ===================================================================
 // MAIN
 // ===================================================================
+
+// ===================================================================
+// MOTOR DE DIAGNÓSTICOS (deploy 4) — sistema de insights determinístico
+// ===================================================================
+const DIAG_RULES = {
+  PERSONA_SOBRECARGADA: 8,
+  PERSONA_EN_RIESGO: 2,
+  PROYECTO_CRITICO_ATRASOS: 3,
+  PROYECTO_CRITICO_PCT: 50,
+  PROYECTO_RIESGO_ATRASOS: 1,
+  ATENCION_VENCEN_7D: 2,
+  VIEJA_DIAS: 7,
+};
+
+function _isOverdueTask(t) {
+  const d = daysUntil(t.fecha);
+  return d !== null && d < 0 && normalizeEstado(t.estado) !== "Terminado";
+}
+
+function _sortByUrgency(tasks) {
+  return [...tasks].sort((a, b) => {
+    const da = daysUntil(a.fecha);
+    const db = daysUntil(b.fecha);
+    if (da === null && db === null) return 0;
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return da - db;
+  });
+}
+
+function _topN(obj, n = 3) {
+  return Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
+}
+
+function _groupCount(tasks, key) {
+  const r = {};
+  tasks.forEach(t => { const k = t[key]; if (k) r[k] = (r[k] || 0) + 1; });
+  return r;
+}
+
+function runDiagnostics(allTasks, mode, params = {}) {
+  const active = allTasks.filter(t => !t.archivada && !t.borrada);
+
+  if (mode === "estado") {
+    const estado = params.estado;
+    const tasks = active.filter(t => normalizeEstado(t.estado) === estado);
+    return _diagEstado(tasks, estado);
+  }
+  if (mode === "atrasadas") {
+    const tasks = active.filter(_isOverdueTask);
+    return _diagAtrasadas(tasks);
+  }
+  if (mode === "avance") {
+    return _diagAvance(active);
+  }
+  if (mode === "total") {
+    return _diagTotal(active);
+  }
+  if (mode === "proyecto") {
+    const tasks = active.filter(t => `${t.empresa}|${t.proyecto}` === params.projectKey);
+    return _diagProyecto(tasks, params.empresa, params.proyecto);
+  }
+  if (mode === "persona") {
+    const tasks = active.filter(t => t.responsable === params.persona);
+    return _diagPersona(tasks, params.persona);
+  }
+  return { title: "", tasks: [], insights: [], actions: [] };
+}
+
+function _diagEstado(tasks, estado) {
+  const insights = [], actions = [];
+  const overdue = tasks.filter(_isOverdueTask).length;
+  const alta = tasks.filter(t => t.prioridad === "Alta").length;
+  const dueSoon = tasks.filter(t => { const d = daysUntil(t.fecha); return d !== null && d >= 0 && d <= 7; }).length;
+  const topProj = _topN(_groupCount(tasks, "proyecto"), 3);
+  const topPers = _topN(_groupCount(tasks, "responsable"), 3);
+
+  if (overdue > 0) insights.push({ icon: "alert", text: `${overdue} ya están vencidas` });
+  if (alta > 0) insights.push({ icon: "zap", text: `${alta} de prioridad alta` });
+  if (dueSoon > 0) insights.push({ icon: "clock", text: `${dueSoon} vencen esta semana` });
+  if (topProj.length > 0) insights.push({ icon: "folder", text: `Por proyecto: ${topProj.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+  if (topPers.length > 0) insights.push({ icon: "users", text: `Por persona: ${topPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+
+  if (estado === "En revisión" && overdue > 0) actions.push(`Bloquea 30 min hoy para revisar — destrabarías ${overdue} atrasos directos`);
+  else if (estado === "En proceso" && overdue > 0) actions.push(`${overdue} en proceso ya están vencidas — acelera o pide ayuda`);
+  else if (estado === "Pendiente" && alta > 0) actions.push(`Empieza por las ${alta} de prioridad alta esta semana`);
+  else if (estado === "Pendiente" && dueSoon > 0) actions.push(`${dueSoon} vencen esta semana — agéndalas hoy`);
+  else if (estado === "Terminado") actions.push(`Excelente — ${tasks.length} cerradas en el periodo. ¡Sigue así!`);
+
+  return { title: `${tasks.length} tareas en ${estado.toLowerCase()}`, tasks: _sortByUrgency(tasks), insights, actions };
+}
+
+function _diagAtrasadas(tasks) {
+  const insights = [], actions = [];
+  if (tasks.length === 0) return { title: "Sin atrasos", tasks: [], insights: [{ icon: "check", text: "Todo al día. Bien jugado." }], actions: [] };
+
+  const sorted = _sortByUrgency(tasks);
+  const masVieja = sorted[0];
+  const diasVieja = Math.abs(daysUntil(masVieja.fecha) || 0);
+  const viejas = tasks.filter(t => Math.abs(daysUntil(t.fecha) || 0) > DIAG_RULES.VIEJA_DIAS).length;
+  const topProj = _topN(_groupCount(tasks, "proyecto"), 3);
+  const topPers = _topN(_groupCount(tasks, "responsable"), 3);
+
+  insights.push({ icon: "alert", text: `La más vieja: "${masVieja.actividad}" (${masVieja.proyecto}) — ${diasVieja} días vencida` });
+  if (viejas > 0) insights.push({ icon: "clock", text: `${viejas} llevan más de 7 días vencidas` });
+  if (topProj.length > 0) insights.push({ icon: "folder", text: `Concentración: ${topProj.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+  if (topPers.length > 0) insights.push({ icon: "users", text: `Por persona: ${topPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+
+  if (topProj.length > 0) {
+    const [topName, topCount] = topProj[0];
+    const pct = Math.round((topCount / tasks.length) * 100);
+    if (pct >= 50) actions.push(`${pct}% de los atrasos están en ${topName} — atácalo primero`);
+  }
+  if (viejas > 0) actions.push(`Empieza por las ${viejas} más viejas — cada día sin atender genera ruido`);
+
+  return { title: `${tasks.length} tareas atrasadas`, tasks: sorted, insights, actions };
+}
+
+function _diagAvance(tasks) {
+  const insights = [], actions = [];
+  const total = tasks.length;
+  const term = tasks.filter(t => normalizeEstado(t.estado) === "Terminado").length;
+  const pct = total > 0 ? Math.round((term / total) * 100) : 0;
+
+  insights.push({ icon: "check", text: `${term} de ${total} tareas completadas` });
+
+  const byEmp = {};
+  tasks.forEach(t => {
+    if (!byEmp[t.empresa]) byEmp[t.empresa] = { total: 0, term: 0 };
+    byEmp[t.empresa].total++;
+    if (normalizeEstado(t.estado) === "Terminado") byEmp[t.empresa].term++;
+  });
+  Object.entries(byEmp).forEach(([emp, m]) => {
+    const p = m.total > 0 ? Math.round((m.term / m.total) * 100) : 0;
+    insights.push({ icon: "building", text: `${emp}: ${p}% (${m.term}/${m.total})` });
+  });
+
+  if (pct < 30) actions.push("Avance bajo — revisa qué está bloqueando el cierre");
+  else if (pct >= 70) actions.push("Buen ritmo — mantén la inercia");
+
+  return { title: `Avance general: ${pct}%`, tasks: [], insights, actions };
+}
+
+function _diagTotal(tasks) {
+  const insights = [], actions = [];
+  const overdue = tasks.filter(_isOverdueTask).length;
+  const open = tasks.filter(t => normalizeEstado(t.estado) !== "Terminado").length;
+  const dueSoon = tasks.filter(t => { const d = daysUntil(t.fecha); return d !== null && d >= 0 && d <= 7; }).length;
+
+  insights.push({ icon: "folder", text: `${tasks.length} tareas activas en el board` });
+  insights.push({ icon: "clock", text: `${open} abiertas, ${tasks.length - open} terminadas` });
+  if (overdue > 0) insights.push({ icon: "alert", text: `${overdue} vencidas requieren atención inmediata` });
+  if (dueSoon > 0) insights.push({ icon: "zap", text: `${dueSoon} vencen en los próximos 7 días` });
+
+  if (overdue > 0) actions.push(`Hay ${overdue} atrasos — entra al panel "Atrasadas" para verlos`);
+  return { title: "Salud general del board", tasks: _sortByUrgency(tasks.filter(_isOverdueTask)), insights, actions };
+}
+
+function _diagProyecto(tasks, empresa, proyecto) {
+  const insights = [], actions = [];
+  if (tasks.length === 0) return { title: proyecto, tasks: [], insights: [{ icon: "check", text: "Sin tareas activas" }], actions: [] };
+
+  const open = tasks.filter(t => normalizeEstado(t.estado) !== "Terminado");
+  const overdue = tasks.filter(_isOverdueTask);
+  const term = tasks.filter(t => normalizeEstado(t.estado) === "Terminado").length;
+  const pct = tasks.length > 0 ? Math.round((term / tasks.length) * 100) : 0;
+  const overduePct = open.length > 0 ? Math.round((overdue.length / open.length) * 100) : 0;
+
+  let risk = "ok";
+  if (overdue.length >= DIAG_RULES.PROYECTO_CRITICO_ATRASOS || overduePct >= DIAG_RULES.PROYECTO_CRITICO_PCT) risk = "crítico";
+  else if (overdue.length >= DIAG_RULES.PROYECTO_RIESGO_ATRASOS) risk = "riesgo";
+  else if (tasks.filter(t => { const d = daysUntil(t.fecha); return d !== null && d >= 0 && d <= 7; }).length >= DIAG_RULES.ATENCION_VENCEN_7D) risk = "atención";
+
+  insights.push({ icon: "check", text: `${pct}% completado (${term}/${tasks.length})` });
+  if (overdue.length > 0) {
+    const masVieja = _sortByUrgency(overdue)[0];
+    const dias = Math.abs(daysUntil(masVieja.fecha) || 0);
+    insights.push({ icon: "alert", text: `${overdue.length} atrasadas · la más vieja ${dias} días ("${masVieja.actividad}")` });
+  }
+  const byPers = _topN(_groupCount(open, "responsable"), 3);
+  if (byPers.length > 0) insights.push({ icon: "users", text: `Equipo activo: ${byPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+
+  if (risk === "crítico") actions.push(`Estado crítico — agenda revisión inmediata con el equipo`);
+  else if (risk === "riesgo") actions.push(`Hay riesgo — destraba los ${overdue.length} atrasos antes de que crezcan`);
+  else if (risk === "atención") actions.push(`Atención: varias vencen pronto — confirma capacidad esta semana`);
+  else actions.push(`Proyecto sano — mantén el ritmo`);
+
+  return { title: `${proyecto} · ${risk.toUpperCase()}`, risk, tasks: _sortByUrgency(open), insights, actions };
+}
+
+function _diagPersona(tasks, persona) {
+  const insights = [], actions = [];
+  const open = tasks.filter(t => normalizeEstado(t.estado) !== "Terminado");
+  const overdue = tasks.filter(_isOverdueTask);
+  const term = tasks.filter(t => normalizeEstado(t.estado) === "Terminado").length;
+  const dueSoon = tasks.filter(t => { const d = daysUntil(t.fecha); return d !== null && d >= 0 && d <= 7; }).length;
+
+  let estado = "ok";
+  if (open.length >= DIAG_RULES.PERSONA_SOBRECARGADA) estado = "sobrecargada";
+  if (overdue.length >= DIAG_RULES.PERSONA_EN_RIESGO) estado = "en riesgo";
+  if (open.length >= DIAG_RULES.PERSONA_SOBRECARGADA && overdue.length >= DIAG_RULES.PERSONA_EN_RIESGO) estado = "crítica";
+
+  insights.push({ icon: "folder", text: `${open.length} abiertas · ${overdue.length} vencidas · ${term} terminadas` });
+  if (dueSoon > 0) insights.push({ icon: "clock", text: `${dueSoon} vencen esta semana` });
+
+  const byProj = _topN(_groupCount(open, "proyecto"), 3);
+  if (byProj.length > 0) {
+    const [top, c] = byProj[0];
+    const pct = open.length > 0 ? Math.round((c / open.length) * 100) : 0;
+    insights.push({ icon: "folder", text: `Concentración: ${pct}% en ${top}` });
+  }
+
+  if (estado === "crítica") actions.push(`Carga crítica — urge reasignar o aplazar tareas`);
+  else if (estado === "sobrecargada") actions.push(`Sobrecargada — considera reasignar o aplazar 2-3 tareas`);
+  else if (estado === "en riesgo") actions.push(`Atrasos acumulados — prioriza destrabar lo vencido`);
+  else if (open.length === 0) actions.push(`Sin tareas activas — disponible para nuevas asignaciones`);
+  else actions.push(`Carga sana — buen ritmo`);
+
+  return { title: `${persona} · ${estado}`, estadoPersona: estado, tasks: _sortByUrgency(open), insights, actions };
+}
+
+
+
 export default function Board() {
   const [tasks, setTasks] = useState(() => {
     try { const c = localStorage.getItem(CACHE_KEY); return c ? JSON.parse(c) : []; } catch { return []; }
@@ -348,6 +571,9 @@ export default function Board() {
   const [showSettings, setShowSettings] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [diagPanel, setDiagPanel] = useState({ open: false, mode: null, params: {} });
+  const openDiag = (mode, params = {}) => setDiagPanel({ open: true, mode, params });
+  const closeDiag = () => setDiagPanel(p => ({ ...p, open: false }));
   const [metricsMode, setMetricsMode] = useState("global"); // global | empresa
   const [personaPanel, setPersonaPanel] = useState(null); // nombre de persona para dashboard
   const [showExport, setShowExport] = useState(false);
@@ -922,7 +1148,8 @@ export default function Board() {
         )}
 
         <WeekBriefing stats={weekStats} risky={riskyProjects} colorOverrides={colorOverrides}
-          onProjectClick={(p) => { setCurrentView("proyectos"); setExpandedProjectRows({ [p.key]: true }); }} />
+          onProjectClick={(p) => { setCurrentView("proyectos"); setExpandedProjectRows({ [p.key]: true }); }}
+          onProjectDiag={(p) => openDiag("proyecto", { projectKey: p.key, empresa: p.empresa, proyecto: p.proyecto })} />
 
         {/* MÉTRICAS con toggle global/empresa */}
         <section className="mb-3">
@@ -932,12 +1159,12 @@ export default function Board() {
           </div>
           {metricsMode === "global" ? (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-              <Metric label="Total" value={metricsGlobal.total} />
-              <Metric label="Pend." value={metricsGlobal.pen} tone="pendiente" />
-              <Metric label="Proceso" value={metricsGlobal.proc} tone="en-proceso" />
-              <Metric label="Revisión" value={metricsGlobal.rev} tone="revision" />
-              <Metric label="Term." value={metricsGlobal.term} tone="terminado" />
-              <Metric label="Avance" value={`${metricsGlobal.avance}%`} />
+              <Metric label="Total" value={metricsGlobal.total} onClick={() => openDiag("total")} />
+              <Metric label="Pend." value={metricsGlobal.pen} tone="pendiente" onClick={() => openDiag("estado", { estado: "Pendiente" })} />
+              <Metric label="Proceso" value={metricsGlobal.proc} tone="en-proceso" onClick={() => openDiag("estado", { estado: "En proceso" })} />
+              <Metric label="Revisión" value={metricsGlobal.rev} tone="revision" onClick={() => openDiag("estado", { estado: "En revisión" })} />
+              <Metric label="Term." value={metricsGlobal.term} tone="terminado" onClick={() => openDiag("estado", { estado: "Terminado" })} />
+              <Metric label="Avance" value={`${metricsGlobal.avance}%`} onClick={() => openDiag("avance")} />
             </div>
           ) : (
             <div className="empresa-metrics">
@@ -1020,9 +1247,10 @@ export default function Board() {
 
       {showSettings && <SettingsPanel personas={allPersonas} colorOverrides={colorOverrides} onChangeColor={changePersonaColor} onClose={() => setShowSettings(false)} />}
       {personaPanel && <PersonaDashboard persona={personaPanel} tasks={tasks} colorOverrides={colorOverrides} onClose={() => setPersonaPanel(null)} onOpenTask={(id) => { setPersonaPanel(null); setSelectedTaskId(id); }} />}
-      {showExport && <ExportView tasks={filteredTasks} metricsByEmpresa={metricsByEmpresa} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} weekStats={weekStats} onClose={() => setShowExport(false)} />}
-      {presenting && <PresentationMode tasks={tasks} weekStats={weekStats} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} colorOverrides={colorOverrides} onClose={() => setPresenting(false)} />}
+      {showExport && <ExportView tasks={filteredTasks} metricsByEmpresa={metricsByEmpresa} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} weekStats={weekStats} projectsList={projectsList} colorOverrides={colorOverrides} onClose={() => setShowExport(false)} />}
+      {presenting && <PresentationMode tasks={tasks} weekStats={weekStats} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} projectsList={projectsList} metricsByEmpresa={metricsByEmpresa} colorOverrides={colorOverrides} onClose={() => setPresenting(false)} />}
       {showTrash && <TrashView tasks={trashedTasks} colorOverrides={colorOverrides} onRestore={restoreTask} onClose={() => setShowTrash(false)} />}
+      <DiagnosticPanel open={diagPanel.open} mode={diagPanel.mode} params={diagPanel.params} tasks={tasks} colorOverrides={colorOverrides} onTaskClick={(id) => setSelectedTaskId(id)} onClose={closeDiag} />
 
       <ConfirmModal dialog={confirmDialog} />
       <GlobalStyles />
@@ -1056,7 +1284,7 @@ function ViewSelector({ value, onChange }) {
 // ===================================================================
 // BRIEFING SEMANAL
 // ===================================================================
-function WeekBriefing({ stats, risky, onProjectClick }) {
+function WeekBriefing({ stats, risky, onProjectClick, onProjectDiag }) {
   return (
     <section className="brief">
       <div className="brief-col brief-col-stats">
@@ -1073,7 +1301,7 @@ function WeekBriefing({ stats, risky, onProjectClick }) {
         {risky.length === 0 ? <div className="brief-empty">Todos los proyectos en plazo.</div> : (
           <div className="risk-row">
             {risky.map(p => (
-              <button key={p.key} className={`risk-card risk-${p.metrics.risk}`} onClick={() => onProjectClick(p)}>
+              <button key={p.key} className={`risk-card risk-${p.metrics.risk}`} onClick={() => onProjectDiag ? onProjectDiag(p) : onProjectClick(p)} title="Click para ver diagnóstico del proyecto">
                 <div className="risk-head"><span className="risk-name">{p.proyecto}</span><span className="risk-pct">{p.metrics.pct}%</span></div>
                 <div className="risk-meta"><span>{p.metrics.overdue} atrasadas</span><span className="dot">·</span><span>{p.empresa}</span></div>
                 <ProgressBar pct={p.metrics.pct} risk={p.metrics.risk} />
@@ -1466,6 +1694,7 @@ function PersonaDashboard({ persona, tasks, colorOverrides, onClose, onOpenTask 
           <button onClick={onClose} className="btn-ghost"><X size={14}/></button>
         </header>
         <div className="dash-body">
+          {(() => { const diag = runDiagnostics(tasks, "persona", { persona }); const estado = diag.estadoPersona; if (estado === "ok") return null; const cls = estado === "crítica" ? "dash-diag-critica" : estado === "sobrecargada" ? "dash-diag-sobrecargada" : "dash-diag-riesgo"; return (<div className={`dash-diag ${cls}`}><div className="dash-diag-status">{estado.toUpperCase()}</div>{diag.actions.length > 0 && <div className="dash-diag-action"><Zap size={11} style={{display:'inline',marginRight:4}}/>{diag.actions[0]}</div>}</div>); })()}
           <div className="dash-metrics">
             <div className="dash-metric"><div className="dash-metric-n">{m.total}</div><div className="dash-metric-l">Total</div></div>
             <div className="dash-metric"><div className="dash-metric-n">{m.pen}</div><div className="dash-metric-l">Pendientes</div></div>
@@ -1494,45 +1723,153 @@ function PersonaDashboard({ persona, tasks, colorOverrides, onClose, onOpenTask 
 // ===================================================================
 // EXPORTAR / IMPRIMIR
 // ===================================================================
-function ExportView({ tasks, metricsByEmpresa, riskyProjects, weekStats, onClose }) {
+function ExportView({ tasks, metricsByEmpresa, riskyProjects, weekStats, projectsList, colorOverrides, onClose }) {
   const fecha = new Date().toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
-  const porPersona = useMemo(() => {
+  const dataPersona = useMemo(() => {
     const map = {};
-    tasks.forEach(t => { const p = t.responsable || "Sin responsable"; (map[p] = map[p] || []).push(t); });
-    return Object.entries(map).map(([persona, list]) => ({ persona, m: calcMetricsFor(list) })).sort((a, b) => b.m.total - a.m.total);
+    tasks.forEach(t => { if (t.archivada || t.borrada) return; const p = t.responsable || "Sin responsable"; (map[p] = map[p] || []).push(t); });
+    return Object.entries(map).map(([persona, list]) => {
+      const diag = runDiagnostics(tasks, "persona", { persona });
+      return { persona, list, diag, m: calcMetricsFor(list) };
+    }).sort((a, b) => b.m.total - a.m.total);
   }, [tasks]);
+
+  const totalActivos = tasks.filter(t => !t.archivada && !t.borrada).length;
+  const totalAbiertas = tasks.filter(t => !t.archivada && !t.borrada && normalizeEstado(t.estado) !== "Terminado").length;
+  const totalAtrasadas = tasks.filter(t => !t.archivada && !t.borrada && _isOverdueTask(t)).length;
+  const totalTerm = tasks.filter(t => !t.archivada && !t.borrada && normalizeEstado(t.estado) === "Terminado").length;
+  const avanceGen = totalActivos > 0 ? Math.round((totalTerm / totalActivos) * 100) : 0;
+
+  const topAlerts = [...(projectsList || [])].filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo").slice(0, 3);
+  const logros = tasks.filter(t => normalizeEstado(t.estado) === "Terminado" && t.fechaTerminado && (Date.now() - new Date(t.fechaTerminado).getTime()) < 7 * 86400000).slice(0, 5);
+
+  const recomendaciones = useMemo(() => {
+    const r = [];
+    if (totalAtrasadas >= 5) r.push(`Hay ${totalAtrasadas} tareas atrasadas. Bloquea tiempo esta semana para destrabarlas — empieza por las más viejas.`);
+    if (totalAtrasadas > 0 && totalAtrasadas < 5) r.push(`${totalAtrasadas} tareas vencidas — manejable, pero atiéndelas antes de que crezcan.`);
+    const sobrec = dataPersona.filter(d => d.diag.estadoPersona === "sobrecargada" || d.diag.estadoPersona === "crítica");
+    if (sobrec.length > 0) r.push(`${sobrec.map(d => d.persona).join(", ")} ${sobrec.length === 1 ? "está" : "están"} con carga alta. Considera reasignar o aplazar.`);
+    if (avanceGen < 30) r.push(`Avance general bajo (${avanceGen}%) — revisa qué está bloqueando los cierres.`);
+    if (topAlerts.length >= 2) r.push(`${topAlerts.length} proyectos en riesgo. Agenda revisión específica con los responsables esta semana.`);
+    if (r.length === 0) r.push("Operación estable. Mantén el ritmo.");
+    return r;
+  }, [totalAtrasadas, dataPersona, avanceGen, topAlerts.length]);
+
   return (
     <div className="export-overlay">
       <div className="export-toolbar no-print">
-        <span className="export-toolbar-title">Vista previa del reporte</span>
+        <span className="export-toolbar-title">Reporte ejecutivo · vista previa</span>
         <div className="export-toolbar-actions">
           <button onClick={() => window.print()} className="yo-btn-primary"><Printer size={14}/>Imprimir / Guardar PDF</button>
           <button onClick={onClose} className="yo-btn-secondary"><X size={14}/>Cerrar</button>
         </div>
       </div>
-      <div className="export-sheet" id="export-sheet">
-        <div className="export-head"><div><div className="export-eyebrow">Aurum Arquitectos · YoDesarrollo</div><h1 className="export-title">Reporte operativo</h1></div><div className="export-date">{fecha}</div></div>
-        <div className="export-section"><h2 className="export-h2">Resumen de la semana</h2><div className="export-week"><div className="export-week-stat"><strong>{weekStats.terminadasSemana}</strong> terminadas</div><div className="export-week-stat"><strong>{weekStats.revisionSemana}</strong> a revisión</div><div className="export-week-stat"><strong>{weekStats.vencenSemana}</strong> vencen en 7 días</div></div></div>
-        <div className="export-section"><h2 className="export-h2">Por empresa</h2><table className="export-table"><thead><tr><th>Empresa</th><th>Total</th><th>Pend.</th><th>Proc.</th><th>Rev.</th><th>Term.</th><th>Avance</th></tr></thead><tbody>{metricsByEmpresa.map(({ empresa, m }) => (<tr key={empresa}><td>{empresa}</td><td>{m.total}</td><td>{m.pen}</td><td>{m.proc}</td><td>{m.rev}</td><td>{m.term}</td><td><strong>{m.avance}%</strong></td></tr>))}</tbody></table></div>
-        <div className="export-section"><h2 className="export-h2">Por persona</h2><table className="export-table"><thead><tr><th>Responsable</th><th>Total</th><th>Pend.</th><th>Proc.</th><th>Rev.</th><th>Term.</th><th>Vencidas</th><th>Avance</th></tr></thead><tbody>{porPersona.map(({ persona, m }) => (<tr key={persona}><td>{persona}</td><td>{m.total}</td><td>{m.pen}</td><td>{m.proc}</td><td>{m.rev}</td><td>{m.term}</td><td className={m.overdue > 0 ? "export-danger" : ""}>{m.overdue}</td><td><strong>{m.avance}%</strong></td></tr>))}</tbody></table></div>
-        {riskyProjects.length > 0 && (
-          <div className="export-section"><h2 className="export-h2">Proyectos en riesgo</h2><table className="export-table"><thead><tr><th>Proyecto</th><th>Empresa</th><th>Atrasadas</th><th>Abiertas</th><th>Avance</th></tr></thead><tbody>{riskyProjects.map(p => (<tr key={p.key}><td>{p.proyecto}</td><td>{p.empresa}</td><td className="export-danger">{p.metrics.overdue}</td><td>{p.metrics.openTotal}</td><td><strong>{p.metrics.pct}%</strong></td></tr>))}</tbody></table></div>
+      <div className="export-sheet export-exec" id="export-sheet">
+        <div className="export-exec-cover">
+          <div className="export-eyebrow">Aurum Arquitectos · YoDesarrollo</div>
+          <h1 className="export-exec-title">Reporte ejecutivo</h1>
+          <div className="export-exec-sub">{fecha}</div>
+        </div>
+
+        <div className="export-exec-summary">
+          <div className="export-exec-stat"><div className="export-exec-stat-n">{totalActivos}</div><div className="export-exec-stat-l">Tareas activas</div></div>
+          <div className="export-exec-stat"><div className="export-exec-stat-n">{totalAbiertas}</div><div className="export-exec-stat-l">Abiertas</div></div>
+          <div className={`export-exec-stat ${totalAtrasadas > 0 ? "export-exec-stat-danger" : ""}`}><div className="export-exec-stat-n">{totalAtrasadas}</div><div className="export-exec-stat-l">Atrasadas</div></div>
+          <div className="export-exec-stat"><div className="export-exec-stat-n">{avanceGen}%</div><div className="export-exec-stat-l">Avance general</div></div>
+        </div>
+
+        {topAlerts.length > 0 && (
+          <div className="export-exec-section">
+            <h2 className="export-exec-h2">⚠ Alertas principales</h2>
+            {topAlerts.map(p => (
+              <div key={p.key} className="export-exec-alert">
+                <div className="export-exec-alert-title">{p.proyecto} <span style={{ fontWeight: 400, color: "#666" }}>· {p.empresa}</span></div>
+                <div className="export-exec-alert-meta">{p.metrics.overdue} atrasadas · {p.metrics.pct}% avance · {p.metrics.openTotal} abiertas · estado: {p.metrics.risk.toUpperCase()}</div>
+              </div>
+            ))}
+          </div>
         )}
+
+        {logros.length > 0 && (
+          <div className="export-exec-section">
+            <h2 className="export-exec-h2">✓ Logros de la semana</h2>
+            {logros.map(t => (
+              <div key={t.id} className="export-exec-win">{t.actividad} <span style={{ color: "#666" }}>· {t.proyecto} · {t.responsable}</span></div>
+            ))}
+          </div>
+        )}
+
+        <div className="export-exec-section">
+          <h2 className="export-exec-h2">Resumen por empresa</h2>
+          <table className="export-table">
+            <thead><tr><th>Empresa</th><th>Total</th><th>Pend.</th><th>Proc.</th><th>Rev.</th><th>Term.</th><th>Atras.</th><th>Avance</th></tr></thead>
+            <tbody>{metricsByEmpresa.map(({ empresa, m }) => (<tr key={empresa}><td>{empresa}</td><td>{m.total}</td><td>{m.pen}</td><td>{m.proc}</td><td>{m.rev}</td><td>{m.term}</td><td className={m.overdue > 0 ? "export-danger" : ""}>{m.overdue}</td><td><strong>{m.avance}%</strong></td></tr>))}</tbody>
+          </table>
+        </div>
+
+        <div className="export-exec-section">
+          <h2 className="export-exec-h2">👥 Asignaciones por persona</h2>
+          <p style={{ fontSize: "0.78rem", color: "#666", marginBottom: "1rem", marginTop: "-0.3rem" }}>Comparte esta sección con el equipo — cada quien ve lo suyo</p>
+          {dataPersona.map(({ persona, list, diag, m }) => {
+            const abiertas = list.filter(t => !t.archivada && !t.borrada && normalizeEstado(t.estado) !== "Terminado");
+            const ordenadas = _sortByUrgency(abiertas);
+            return (
+              <div key={persona} className="export-exec-persona">
+                <div className="export-exec-persona-head">
+                  <div className="export-exec-persona-name">{persona}</div>
+                  <div className="export-exec-persona-meta">{m.openTotal || abiertas.length} abiertas · {m.overdue || 0} vencidas · {m.avance}% avance · <strong>{diag.estadoPersona}</strong></div>
+                </div>
+                {ordenadas.length === 0 ? (
+                  <p className="export-exec-persona-empty">Sin tareas abiertas. ✓</p>
+                ) : (
+                  ordenadas.slice(0, 15).map(t => {
+                    const d = daysUntil(t.fecha);
+                    const isLate = d !== null && d < 0;
+                    const isSoon = d !== null && d >= 0 && d <= 7;
+                    return (
+                      <div key={t.id} className="export-exec-persona-task">
+                        <div>
+                          <div>{t.actividad}</div>
+                          <div className="export-exec-persona-task-meta">{t.proyecto} · {t.empresa} · {t.prioridad || "—"}</div>
+                        </div>
+                        <div className="export-exec-persona-task-meta">{t.estado}</div>
+                        <div className={`export-exec-persona-task-due ${isLate ? "due-late" : isSoon ? "due-soon" : ""}`}>
+                          {d === null ? "—" : isLate ? `${Math.abs(d)}d vencida` : `${d}d`}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {diag.actions.length > 0 && <div style={{ fontSize: "0.78rem", color: "#92400E", marginTop: "0.5rem", fontStyle: "italic" }}>💡 {diag.actions[0]}</div>}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="export-exec-section">
+          <h2 className="export-exec-h2">💡 Recomendaciones</h2>
+          {recomendaciones.map((r, i) => <div key={i} className="export-exec-rec">{r}</div>)}
+        </div>
+
         <div className="export-foot">Generado desde el Board operativo · {fecha}</div>
       </div>
     </div>
   );
 }
 
+
 // ===================================================================
 // MODO PRESENTACIÓN
 // ===================================================================
-function PresentationMode({ tasks, weekStats, riskyProjects, colorOverrides, onClose }) {
+function PresentationMode({ tasks, weekStats, riskyProjects, projectsList, metricsByEmpresa, colorOverrides, onClose }) {
   const [slide, setSlide] = useState(0);
   const slides = [
     { title: "Board operativo", subtitle: "Aurum Arquitectos · YoDesarrollo", kind: "cover" },
     { title: "Esta semana", subtitle: "Movimientos relevantes", kind: "stats" },
+    { title: "Avance general", subtitle: "Estado de la operación", kind: "avance" },
+    { title: "Salud por empresa", subtitle: "Avance y carga por organización", kind: "empresas" },
     { title: "Proyectos en riesgo", subtitle: "Atención inmediata", kind: "risks" },
+    { title: "Carga del equipo", subtitle: "Cuánto trae cada quien", kind: "load" },
     { title: "Próximas entregas", subtitle: "Vencen en los próximos 7 días", kind: "upcoming" },
     { title: "Actividad reciente", subtitle: "Última semana", kind: "activity" },
   ];
@@ -1550,9 +1887,12 @@ function PresentationMode({ tasks, weekStats, riskyProjects, colorOverrides, onC
         <h2 className="present-title">{cur.title}</h2>
         <p className="present-sub">{cur.subtitle}</p>
         <div className="present-body">
-          {cur.kind === "cover" && <PresentCover stats={weekStats} risky={riskyProjects.length} />}
+          {cur.kind === "cover" && <PresentCover stats={weekStats} risky={riskyProjects.length} tasks={tasks} />}
           {cur.kind === "stats" && <PresentStats stats={weekStats} />}
+          {cur.kind === "avance" && <PresentAvance tasks={tasks} />}
+          {cur.kind === "empresas" && <PresentEmpresas metricsByEmpresa={metricsByEmpresa} tasks={tasks} />}
           {cur.kind === "risks" && <PresentRisks risky={riskyProjects} />}
+          {cur.kind === "load" && <PresentLoad tasks={tasks} colorOverrides={colorOverrides} />}
           {cur.kind === "upcoming" && <PresentUpcoming tasks={tasks} colorOverrides={colorOverrides} />}
           {cur.kind === "activity" && <PresentActivity tasks={tasks} colorOverrides={colorOverrides} />}
         </div>
@@ -1565,28 +1905,97 @@ function PresentationMode({ tasks, weekStats, riskyProjects, colorOverrides, onC
     </div>
   );
 }
-function PresentCover({ stats, risky }) {
-  return (<div className="present-cover"><div className="cover-big-stat"><div className="cbs-n">{stats.terminadasSemana}</div><div className="cbs-l">tareas terminadas esta semana</div></div><div className="cover-mini-stats"><div className="cms"><span className="cms-n">{stats.vencenSemana}</span><span className="cms-l">vencen 7d</span></div><div className="cms"><span className="cms-n">{risky}</span><span className="cms-l">proyectos en riesgo</span></div></div></div>);
+function PresentCover({ stats, risky, tasks }) {
+  const overdue = tasks.filter(t => !t.archivada && !t.borrada && _isOverdueTask(t)).length;
+  return (<div className="present-cover"><div className="cover-big-stat"><div className="cbs-n">{stats.terminadasSemana}</div><div className="cbs-l">tareas terminadas esta semana</div></div><div className="cover-mini-stats"><div className="cms"><span className="cms-n">{stats.vencenSemana}</span><span className="cms-l">vencen 7d</span></div><div className="cms"><span className="cms-n">{overdue}</span><span className="cms-l">atrasadas</span></div><div className="cms"><span className="cms-n">{risky}</span><span className="cms-l">proyectos en riesgo</span></div></div></div>);
 }
 function PresentStats({ stats }) {
   return (<div className="present-stats"><div className="ps-card"><div className="ps-n">{stats.terminadasSemana}</div><div className="ps-l">Terminadas</div></div><div className="ps-card"><div className="ps-n">{stats.revisionSemana}</div><div className="ps-l">A revisión</div></div><div className="ps-card"><div className="ps-n">{stats.vencenSemana}</div><div className="ps-l">Vencen en 7 días</div></div></div>);
+}
+function PresentAvance({ tasks }) {
+  const active = tasks.filter(t => !t.archivada && !t.borrada);
+  const total = active.length;
+  const term = active.filter(t => normalizeEstado(t.estado) === "Terminado").length;
+  const pend = active.filter(t => normalizeEstado(t.estado) === "Pendiente").length;
+  const proc = active.filter(t => normalizeEstado(t.estado) === "En proceso").length;
+  const rev = active.filter(t => normalizeEstado(t.estado) === "En revisión").length;
+  const pct = total > 0 ? Math.round((term / total) * 100) : 0;
+  return (
+    <div>
+      <div className="cover-big-stat" style={{ marginBottom: "2rem" }}><div className="cbs-n">{pct}%</div><div className="cbs-l">avance general · {term} de {total} terminadas</div></div>
+      <div className="present-grid-stats">
+        <div className="present-grid-stat-card"><div className="ps-n">{pend}</div><div className="ps-l">Pendientes</div></div>
+        <div className="present-grid-stat-card"><div className="ps-n">{proc}</div><div className="ps-l">En proceso</div></div>
+        <div className="present-grid-stat-card"><div className="ps-n">{rev}</div><div className="ps-l">En revisión</div></div>
+        <div className="present-grid-stat-card"><div className="ps-n">{term}</div><div className="ps-l">Terminadas</div></div>
+      </div>
+    </div>
+  );
+}
+function PresentEmpresas({ metricsByEmpresa, tasks }) {
+  if (!metricsByEmpresa || metricsByEmpresa.length === 0) return <div className="present-empty">Sin datos por empresa.</div>;
+  return (
+    <div>
+      {metricsByEmpresa.map(({ empresa, m }) => {
+        const overdue = tasks.filter(t => !t.archivada && !t.borrada && t.empresa === empresa && _isOverdueTask(t)).length;
+        return (
+          <div key={empresa} className="present-empresa-row">
+            <div className="present-empresa-name">{empresa}</div>
+            <div className="present-empresa-pct">{m.avance}%</div>
+            <div className="present-empresa-meta">{m.total} totales · {m.openTotal || (m.pen + m.proc + m.rev)} abiertas{overdue > 0 ? ` · ${overdue} atrasadas` : ""}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 function PresentRisks({ risky }) {
   if (risky.length === 0) return <div className="present-empty">✓ Sin proyectos en riesgo.</div>;
   return (<div className="present-risks">{risky.slice(0, 6).map(p => (<div key={p.key} className={`pr-card risk-${p.metrics.risk}`}><div className="pr-head"><span className="pr-name">{p.proyecto}</span><span className="pr-pct">{p.metrics.pct}%</span></div><div className="pr-meta">{p.empresa} · {p.metrics.overdue} atrasadas · {p.metrics.openTotal} abiertas</div><ProgressBar pct={p.metrics.pct} risk={p.metrics.risk} /></div>))}</div>);
 }
+function PresentLoad({ tasks, colorOverrides }) {
+  const active = tasks.filter(t => !t.archivada && !t.borrada);
+  const byPers = {};
+  active.forEach(t => {
+    const p = t.responsable || "Sin responsable";
+    if (!byPers[p]) byPers[p] = { total: 0, open: 0, overdue: 0 };
+    byPers[p].total++;
+    if (normalizeEstado(t.estado) !== "Terminado") byPers[p].open++;
+    if (_isOverdueTask(t)) byPers[p].overdue++;
+  });
+  const data = Object.entries(byPers).sort((a, b) => b[1].open - a[1].open);
+  if (data.length === 0) return <div className="present-empty">Sin tareas asignadas.</div>;
+  const maxOpen = Math.max(...data.map(([, m]) => m.open), DIAG_RULES.PERSONA_SOBRECARGADA);
+  return (
+    <div>
+      {data.map(([p, m]) => {
+        const pal = personPalette(p, colorOverrides);
+        const pct = maxOpen > 0 ? (m.open / maxOpen) * 100 : 0;
+        const isOver = m.open >= DIAG_RULES.PERSONA_SOBRECARGADA;
+        return (
+          <div key={p} className="present-load-row">
+            <div className="present-load-name" style={{ color: pal.text }}>{p}</div>
+            <div className="present-load-bar"><div className={`present-load-fill ${isOver ? "over" : ""}`} style={{ width: `${pct}%` }} /></div>
+            <div className={`present-load-stat ${m.overdue > 0 ? "over" : ""}`}>{m.open} abiertas{m.overdue > 0 ? ` · ${m.overdue} ⚠` : ""}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function PresentUpcoming({ tasks, colorOverrides }) {
-  const upcoming = tasks.filter(t => { if (t.estado === "Terminado" || t.archivada) return false; const d = daysUntil(t); return d != null && d >= 0 && d <= 7; }).sort((a, b) => daysUntil(a) - daysUntil(b)).slice(0, 8);
+  const upcoming = tasks.filter(t => { if (t.estado === "Terminado" || t.archivada || t.borrada) return false; const d = daysUntil(t.fecha); return d != null && d >= 0 && d <= 7; }).sort((a, b) => daysUntil(a.fecha) - daysUntil(b.fecha)).slice(0, 8);
   if (upcoming.length === 0) return <div className="present-empty">Sin entregas próximas.</div>;
   return (<div className="present-list">{upcoming.map(t => { const palette = personPalette(t.responsable, colorOverrides); return (<div key={t.id} className="pl-row"><div className="pl-due"><DeadlineBadge task={t} compact /></div><div className="pl-title">{t.actividad}</div><div className="pl-proj">{t.proyecto}</div><div className="pl-asg" style={{ color: palette.text }}><PersonaAvatar name={t.responsable} size={20} colorOverrides={colorOverrides} />{(t.responsable || "").split(" ")[0]}</div></div>); })}</div>);
 }
 function PresentActivity({ tasks, colorOverrides }) {
   const today = new Date();
   const weekAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
-  const recent = tasks.filter(t => { const ref = t.fechaTerminado || t.actualizado; return ref && new Date(ref) >= weekAgo && (t.estado === "Terminado" || t.estado === "En revisión"); }).sort((a, b) => new Date(b.fechaTerminado || b.actualizado) - new Date(a.fechaTerminado || a.actualizado)).slice(0, 8);
+  const recent = tasks.filter(t => { if (t.archivada || t.borrada) return false; const ref = t.fechaTerminado || t.actualizado; return ref && new Date(ref) >= weekAgo && (normalizeEstado(t.estado) === "Terminado" || normalizeEstado(t.estado) === "En revisión"); }).sort((a, b) => new Date(b.fechaTerminado || b.actualizado) - new Date(a.fechaTerminado || a.actualizado)).slice(0, 8);
   if (recent.length === 0) return <div className="present-empty">Sin actividad reciente.</div>;
-  return (<div className="present-list">{recent.map(t => { const palette = personPalette(t.responsable, colorOverrides); const verb = t.estado === "Terminado" ? "completó" : "subió a revisión"; return (<div key={t.id} className="pl-row"><div className="pl-asg" style={{ color: palette.text }}><PersonaAvatar name={t.responsable} size={20} colorOverrides={colorOverrides} />{(t.responsable || "").split(" ")[0]}</div><div className="pl-verb">{verb}</div><div className="pl-title">{t.actividad}</div><div className="pl-proj">{t.proyecto}</div></div>); })}</div>);
+  return (<div className="present-list">{recent.map(t => { const palette = personPalette(t.responsable, colorOverrides); const verb = normalizeEstado(t.estado) === "Terminado" ? "completó" : "subió a revisión"; return (<div key={t.id} className="pl-row"><div className="pl-asg" style={{ color: palette.text }}><PersonaAvatar name={t.responsable} size={20} colorOverrides={colorOverrides} />{(t.responsable || "").split(" ")[0]}</div><div className="pl-verb">{verb}</div><div className="pl-title">{t.actividad}</div><div className="pl-proj">{t.proyecto}</div></div>); })}</div>);
 }
+
 
 // ===================================================================
 // SUBCOMPONENTES COMUNES
@@ -1624,7 +2033,7 @@ function SaveBadge({ status, errorMsg, onRetry }) {
   return <span className="badge-idle">Listo</span>;
 }
 function GlobalSyncBadge({ status }) { return <span className={`g-sync g-sync-${status.type}`}>{status.text}</span>; }
-function Metric({ label, value, tone }) { return <div className={`metric-card${tone ? ` metric-${tone}` : ""}`}><div className="metric-value">{value}</div><div className="metric-label">{label}</div></div>; }
+function Metric({ label, value, tone, onClick }) { const cls = `metric-card${tone ? ` metric-${tone}` : ""}${onClick ? " metric-btn" : ""}`; const inner = (<><div className="metric-value">{value}</div><div className="metric-label">{label}</div></>); return onClick ? <button className={cls} onClick={onClick} title={`Ver detalle de ${label}`}>{inner}</button> : <div className={cls}>{inner}</div>; }
 function Field({ label, children }) { return <label className="field"><span className="field-label">{label}</span>{children}</label>; }
 function ConfirmModal({ dialog }) {
   if (!dialog?.open) return null;
@@ -1808,6 +2217,74 @@ function TrashView({ tasks, colorOverrides, onRestore, onClose }) {
             );
           })}
           <p className="trash-note">Las tareas borradas se conservan en el Sheet. Para purgarlas definitivamente, edita la columna <code>borrada</code> directamente desde Google Sheets.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ===================================================================
+// PANEL DE DIAGNÓSTICO (deploy 4) — modal con insights + tareas
+// ===================================================================
+function DiagnosticPanel({ open, mode, params, tasks, colorOverrides, onTaskClick, onClose }) {
+  if (!open) return null;
+  const result = useMemo(() => runDiagnostics(tasks, mode, params), [tasks, mode, params]);
+  const InsightIcon = ({ icon }) => {
+    const map = { alert: AlertTriangle, zap: Zap, clock: Clock, folder: Folder, users: Users, check: CheckCircle2, building: Building2 };
+    const Comp = map[icon] || CheckCircle2;
+    return <Comp size={13} />;
+  };
+  return (
+    <div className="settings-overlay" onClick={onClose}>
+      <div className="diag-box" onClick={e => e.stopPropagation()}>
+        <header className="diag-header">
+          <div>
+            <p className="yo-eyebrow"><Compass size={11} style={{ display: 'inline', marginRight: 4 }} />Diagnóstico</p>
+            <h3 className="diag-title">{result.title || "Diagnóstico"}</h3>
+          </div>
+          <button onClick={onClose} className="btn-ghost"><X size={14} /></button>
+        </header>
+        <div className="diag-body">
+          {result.insights.length > 0 && (
+            <ul className="diag-insights">
+              {result.insights.map((ins, i) => (
+                <li key={i} className="diag-insight"><span className="diag-insight-icon"><InsightIcon icon={ins.icon} /></span><span>{ins.text}</span></li>
+              ))}
+            </ul>
+          )}
+          {result.actions.length > 0 && (
+            <div className="diag-actions">
+              <p className="diag-actions-lbl">Acción sugerida</p>
+              {result.actions.map((a, i) => <p key={i} className="diag-action"><Zap size={12} style={{ display: 'inline', marginRight: 4, color: 'var(--accent)' }} />{a}</p>)}
+            </div>
+          )}
+          {result.tasks.length > 0 && (
+            <div className="diag-tasks">
+              <p className="diag-tasks-lbl">Tareas ({result.tasks.length})</p>
+              {result.tasks.slice(0, 20).map(t => {
+                const pal = personPalette(t.responsable, colorOverrides);
+                const dDay = daysUntil(t.fecha);
+                const isLate = dDay !== null && dDay < 0;
+                return (
+                  <button key={t.id} className="diag-task" onClick={() => { onTaskClick && onTaskClick(t.id); onClose(); }}>
+                    <div className="diag-task-main">
+                      <div className="diag-task-title">{t.actividad}</div>
+                      <div className="diag-task-meta">{t.proyecto} · <span style={{ color: pal.text }}>{t.responsable}</span></div>
+                    </div>
+                    <div className="diag-task-right">
+                      <span className={`est-chip mini est-${slugify(t.estado)}`}>{t.estado}</span>
+                      {dDay !== null && <span className={`deadline-c ${isLate ? 'deadline-red' : dDay <= 7 ? 'deadline-orange' : 'deadline-green'}`}>{isLate ? `${Math.abs(dDay)}d vencida` : `${dDay}d`}</span>}
+                    </div>
+                  </button>
+                );
+              })}
+              {result.tasks.length > 20 && <p className="diag-more">+ {result.tasks.length - 20} más</p>}
+            </div>
+          )}
+          {result.tasks.length === 0 && result.insights.length > 0 && result.actions.length === 0 && (
+            <p className="diag-empty">Sin tareas en este filtro.</p>
+          )}
         </div>
       </div>
     </div>
@@ -2355,6 +2832,142 @@ function GlobalStyles() {
       .dark .ms-section-danger { background: #2a1416; }
       .dark .comentario-texto { color: #cbd0d8; }
       .dark .input:focus { box-shadow: 0 0 0 3px rgba(176,141,87,0.18); }
+
+      /* ===================== DEPLOY 4 — DIAGNÓSTICOS + DARK FIX ===================== */
+
+      /* Métricas clickeables (todo el card es botón) */
+      .metric-btn { background: inherit; border: inherit; padding: inherit; text-align: left; cursor: pointer; width: 100%; transition: all .14s ease; font-family: inherit; color: inherit; }
+      .metric-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--accent); }
+      .metric-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+      /* Panel de diagnóstico */
+      .diag-box { background: #FFF; max-width: 720px; width: 95%; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.25); border-radius: 10px; animation: pop .18s ease-out; overflow: hidden; }
+      .diag-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 1.1rem 1.4rem; border-bottom: 1px solid #ECECEC; }
+      .diag-title { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700; margin: 0.3rem 0 0; line-height: 1.15; }
+      .diag-body { padding: 1rem 1.4rem 1.4rem; overflow-y: auto; }
+      .diag-insights { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-direction: column; gap: 0.4rem; }
+      .diag-insight { display: flex; align-items: center; gap: 0.5rem; font-size: 0.84rem; color: #333; line-height: 1.4; }
+      .diag-insight-icon { display: inline-flex; color: var(--accent); flex-shrink: 0; }
+      .diag-actions { background: #FFF8EC; border-left: 3px solid var(--accent); padding: 0.7rem 0.9rem; margin: 0.7rem 0 1.1rem; border-radius: 0 5px 5px 0; }
+      .diag-actions-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #92400E; margin: 0 0 0.35rem; }
+      .diag-action { font-size: 0.85rem; font-weight: 600; color: #1a1a1a; margin: 0; line-height: 1.45; }
+      .diag-tasks-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #888; margin: 0.6rem 0 0.4rem; }
+      .diag-task { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; width: 100%; padding: 0.55rem 0.7rem; background: #FAFAFA; border: 1px solid #ECECEC; border-radius: 5px; cursor: pointer; text-align: left; margin-bottom: 0.35rem; transition: all .12s ease; font-family: inherit; color: inherit; }
+      .diag-task:hover { border-color: var(--accent); transform: translateX(2px); background: #FFFAF0; }
+      .diag-task-title { font-size: 0.85rem; font-weight: 600; line-height: 1.3; }
+      .diag-task-meta { font-size: 0.7rem; color: #777; margin-top: 0.15rem; }
+      .diag-task-right { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+      .diag-more { font-size: 0.72rem; color: #888; text-align: center; margin: 0.4rem 0 0; }
+      .diag-empty { font-size: 0.85rem; color: #888; text-align: center; padding: 1.5rem 0; }
+
+      /* ===== DARK FIX (deploy 4) ===== */
+      /* Logos en blanco automáticamente en modo oscuro */
+      .dark .logo-img,
+      .dark img[alt*="ogo"],
+      .dark .yo-header img,
+      .dark .brand-logo img,
+      .dark .empresa-logo { filter: brightness(0) invert(1); }
+
+      /* Fondos dark más cohesivos */
+      .dark.brand-shell { background: linear-gradient(180deg, #0d1015 0%, #14171d 100%); }
+      .dark .yo-card, .dark .yo-header, .dark .persona-column, .dark .kanban-card, .dark .estado-card, .dark .proj-row, .dark .task-row, .dark .brief, .dark .calendar-view, .dark .metric-card, .dark .ms-section, .dark .timeline-view, .dark .empresa-metric-block, .dark .risk-card, .dark .diag-box, .dark .settings-box, .dark .dash-box, .dark .confirm-box, .dark .trash-box, .dark .proyecto-tile { background: #1a1d24; border-color: #2d3139; color: #e5e7eb; }
+      .dark .empresa-header-mini { color: #aab0bc; }
+      .dark .empresa-name-mini { color: #cdd1d8; }
+      .dark .proyecto-tile-kanban { background: #14171d; }
+      .dark .kanban-col-pendiente .kanban-col-header { background: #232730; color: #b6bcc8; }
+      .dark .kanban-col-en-proceso .kanban-col-header { background: #2e2417; color: #e6c89a; }
+      .dark .kanban-col-en-revision .kanban-col-header { background: #1a2435; color: #93b4e8; }
+      .dark .kanban-col-terminado .kanban-col-header { background: #16291f; color: #86d4a5; }
+      .dark .metric-card.metric-pendiente { background: #1c1f26; border-left-color: #6b7280; }
+      .dark .metric-card.metric-en-proceso { background: #221e15; border-left-color: #d4a663; }
+      .dark .metric-card.metric-en-revision { background: #161d2a; border-left-color: #5b8edd; }
+      .dark .metric-card.metric-terminado { background: #15211a; border-left-color: #4eb27a; }
+      .dark .risk-card.risk-critico { background: #2a1416; border-left-color: #d83a3a; }
+      .dark .risk-card.risk-riesgo { background: #2a2014; border-left-color: #d4a663; }
+      .dark .form-derived { background: #14171d; color: #aab0bc; }
+      .dark .diag-actions { background: #2a2014; border-left-color: var(--accent); }
+      .dark .diag-actions-lbl { color: #d4a663; }
+      .dark .diag-task { background: #14171d; border-color: #2d3139; }
+      .dark .diag-task:hover { background: #1f2330; border-color: var(--accent); }
+      .dark .diag-task-meta, .dark .diag-tasks-lbl, .dark .diag-more { color: #9aa0aa; }
+      .dark .stat-pen { background: #1c1f26; color: #aab0bc; }
+      .dark .stat-proc { background: #221e15; color: #d4a663; }
+      .dark .stat-sub { background: #161d2a; color: #93b4e8; }
+      .dark .stat-term { background: #15211a; color: #86d4a5; }
+      .dark .pipe-pendiente { background: #232730; color: #b6bcc8; }
+      .dark .pipe-en-proceso { background: #2e2417; color: #e6c89a; }
+      .dark .pipe-en-revision { background: #1a2435; color: #93b4e8; }
+      .dark .pipe-terminado { background: #16291f; color: #86d4a5; }
+      .dark .est-pendiente { background: #232730; color: #b6bcc8; }
+      .dark .est-en-proceso { background: #2e2417; color: #e6c89a; }
+      .dark .est-en-revision { background: #1a2435; color: #93b4e8; }
+      .dark .est-terminado { background: #16291f; color: #86d4a5; }
+
+      /* ===== EXPORT EJECUTIVO ENRIQUECIDO (deploy 4) ===== */
+      .export-exec { padding: 0; }
+      .export-exec-cover { padding: 2rem 2.5rem 1rem; border-bottom: 2px solid #1a1a1a; }
+      .export-exec-title { font-family: 'Playfair Display', serif; font-size: 1.8rem; font-weight: 700; margin: 0.3rem 0 0.1rem; }
+      .export-exec-sub { font-size: 0.85rem; color: #555; }
+      .export-exec-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; padding: 1.2rem 2.5rem; background: #FAFAFA; }
+      .export-exec-stat { text-align: center; }
+      .export-exec-stat-n { font-family: 'Playfair Display', serif; font-size: 1.8rem; font-weight: 700; line-height: 1; }
+      .export-exec-stat-l { font-size: 9px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #777; margin-top: 0.2rem; }
+      .export-exec-stat-danger .export-exec-stat-n { color: #b91c1c; }
+      .export-exec-section { padding: 1.2rem 2.5rem; border-bottom: 1px solid #ECECEC; }
+      .export-exec-h2 { font-family: 'Playfair Display', serif; font-size: 1.2rem; font-weight: 700; margin: 0 0 0.7rem; }
+      .export-exec-alert { background: #FEF2F2; border-left: 4px solid #DC2626; padding: 0.7rem 1rem; margin-bottom: 0.5rem; border-radius: 0 5px 5px 0; }
+      .export-exec-alert-title { font-weight: 700; font-size: 0.92rem; }
+      .export-exec-alert-meta { font-size: 0.78rem; color: #555; margin-top: 0.15rem; }
+      .export-exec-win { background: #ECFDF5; border-left: 4px solid #10B981; padding: 0.55rem 0.9rem; margin-bottom: 0.35rem; font-size: 0.85rem; border-radius: 0 5px 5px 0; }
+      .export-exec-persona { background: #FFF; border: 1px solid #ECECEC; padding: 1rem 1.2rem; margin-bottom: 0.8rem; border-radius: 6px; page-break-inside: avoid; }
+      .export-exec-persona-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; padding-bottom: 0.4rem; border-bottom: 1px solid #ECECEC; }
+      .export-exec-persona-name { font-family: 'Playfair Display', serif; font-size: 1.15rem; font-weight: 700; }
+      .export-exec-persona-meta { font-size: 0.75rem; color: #666; margin-left: auto; }
+      .export-exec-persona-task { display: grid; grid-template-columns: 1fr 130px 90px; gap: 0.8rem; padding: 0.35rem 0; font-size: 0.82rem; border-bottom: 1px dashed #F0F0F0; }
+      .export-exec-persona-task:last-child { border-bottom: none; }
+      .export-exec-persona-task-meta { font-size: 0.7rem; color: #888; }
+      .export-exec-persona-task-due { font-size: 0.75rem; font-weight: 600; text-align: right; }
+      .export-exec-persona-task-due.due-late { color: #b91c1c; }
+      .export-exec-persona-task-due.due-soon { color: #92400E; }
+      .export-exec-persona-empty { font-size: 0.78rem; color: #777; font-style: italic; }
+      .export-exec-rec { padding: 0.5rem 0.9rem; background: #FFF8EC; border-left: 3px solid var(--accent); margin-bottom: 0.35rem; font-size: 0.85rem; line-height: 1.45; border-radius: 0 5px 5px 0; }
+
+      @media print {
+        .export-exec-summary { background: #fff; border-bottom: 1px solid #DDD; }
+        .export-exec-persona { page-break-inside: avoid; box-shadow: none; }
+        .export-exec-section { page-break-inside: avoid; }
+      }
+
+      /* Slides nuevos de modo presentación */
+      .present-grid-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+      .present-grid-stat-card { background: rgba(255,255,255,0.05); padding: 1.5rem 1.2rem; text-align: center; border-radius: 6px; }
+      .present-empresa-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; align-items: center; padding: 1rem 1.5rem; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 0.8rem; }
+      .present-empresa-name { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700; }
+      .present-empresa-pct { font-family: 'Playfair Display', serif; font-size: 2.2rem; font-weight: 700; text-align: center; color: var(--accent); }
+      .present-empresa-meta { font-size: 0.85rem; color: #aaa; text-align: right; }
+      .present-load-row { display: grid; grid-template-columns: 180px 1fr 90px; gap: 1rem; align-items: center; padding: 0.7rem 1.2rem; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 0.5rem; }
+      .present-load-name { font-size: 1.05rem; font-weight: 600; }
+      .present-load-bar { height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; }
+      .present-load-fill { height: 100%; background: var(--accent); transition: width .3s; }
+      .present-load-fill.over { background: #DC2626; }
+      .present-load-stat { font-size: 0.95rem; color: #ccc; text-align: right; }
+      .present-load-stat.over { color: #f87171; font-weight: 600; }
+
+      /* Diagnóstico en dashboard de persona */
+      .dash-diag { padding: 0.7rem 0.9rem; margin-bottom: 1rem; border-radius: 5px; border-left: 3px solid; }
+      .dash-diag-sobrecargada { background: #FFF8EC; border-left-color: var(--accent); }
+      .dash-diag-riesgo { background: #FEF8E7; border-left-color: #F59E0B; }
+      .dash-diag-critica { background: #FEF2F2; border-left-color: #DC2626; }
+      .dash-diag-status { font-size: 9px; font-weight: 800; letter-spacing: 0.2em; color: #92400E; margin-bottom: 0.25rem; }
+      .dash-diag-critica .dash-diag-status { color: #991B1B; }
+      .dash-diag-riesgo .dash-diag-status { color: #92400E; }
+      .dash-diag-action { font-size: 0.82rem; font-weight: 600; color: #1a1a1a; line-height: 1.4; }
+      .dark .dash-diag-sobrecargada { background: #2a2014; }
+      .dark .dash-diag-riesgo { background: #2a2014; }
+      .dark .dash-diag-critica { background: #2a1416; }
+      .dark .dash-diag-action { color: #e5e7eb; }
+
+
     `}</style>
   );
 }
