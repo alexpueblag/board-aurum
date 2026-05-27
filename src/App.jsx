@@ -54,15 +54,28 @@ class ErrorBoundary extends React.Component {
 const SHEET_FIELDS = ["mes", "empresa", "proyecto", "responsable", "semana", "actividad", "entregable", "fecha", "estado", "observaciones", "prioridad", "archivada", "fechaTerminado", "color", "historial", "subtareas", "comentarios", "borrada"];
 const FIELD_TO_SHEET = { mesCompromiso: "mes" };
 
-// Estados — "Subido" ahora es "En revisión"
-const ESTADOS = ["Pendiente", "En proceso", "En revisión", "Terminado"];
+// Estados — "Subido"/"En standby" ahora se normalizan a "En standby"
+const ESTADOS = ["Pendiente", "En proceso", "En standby", "Terminado"];
 const ESTADO_SLUG = {
   "Pendiente": "pendiente",
   "En proceso": "en-proceso",
-  "En revisión": "revision",
+  "En standby": "en-standby",
   "Terminado": "terminado",
+  // Aliases para compatibilidad con datos viejos
+  "En standby": "en-standby",
+  "Subido": "en-standby",
+  "Detenido": "en-standby",
 };
 function estadoSlug(estado) { return ESTADO_SLUG[estado] || "pendiente"; }
+function normalizeEstado(estado) {
+  if (!estado) return "Pendiente";
+  const e = String(estado).trim().toLowerCase();
+  if (e === "pendiente") return "Pendiente";
+  if (e === "en proceso" || e === "en-proceso") return "En proceso";
+  if (e === "en standby" || e === "en standby." || e === "en revisión" || e === "en revision" || e === "subido" || e === "detenido") return "En standby";
+  if (e === "terminado" || e === "completado") return "Terminado";
+  return "Pendiente";
+}
 
 const PRIORIDADES = ["Alta", "Media", "Baja"];
 const EMPRESAS = ["Aurum Arquitectos", "YoDesarrollo"];
@@ -169,7 +182,7 @@ function isDueToday(t) {
 function urgencyScore(t) {
   if (t.estado === "Terminado") return 999999;
   const d = daysUntil(t);
-  const sw = { Pendiente: 0, "En proceso": 0.15, "En revisión": 0.3 }[t.estado] ?? 0.5;
+  const sw = { Pendiente: 0, "En proceso": 0.15, "En standby": 0.3 }[normalizeEstado(t.estado)] ?? 0.5;
   const pw = { Alta: -100, Media: 0, Baja: 50 }[t.prioridad] || 0;
   return (d == null ? 9999 : d) + sw + pw;
 }
@@ -284,7 +297,7 @@ function calcWeekStats(tasks) {
     return ref && new Date(ref) >= weekAgo;
   }).length;
   const revisionSemana = tasks.filter(t => {
-    if (t.estado !== "En revisión") return false;
+    if (t.estado !== "En standby") return false;
     return t.actualizado && new Date(t.actualizado) >= weekAgo;
   }).length;
   const vencenSemana = tasks.filter(t => { const d = daysUntil(t); return t.estado !== "Terminado" && d != null && d >= 0 && d <= 7; }).length;
@@ -292,10 +305,10 @@ function calcWeekStats(tasks) {
 }
 function calcMetricsFor(list) {
   const total = list.length;
-  const term = list.filter(t => t.estado === "Terminado").length;
-  const rev = list.filter(t => t.estado === "En revisión").length;
-  const pen = list.filter(t => t.estado === "Pendiente").length;
-  const proc = list.filter(t => t.estado === "En proceso").length;
+  const term = list.filter(t => normalizeEstado(t.estado) === "Terminado").length;
+  const rev = list.filter(t => normalizeEstado(t.estado) === "En standby").length;
+  const pen = list.filter(t => normalizeEstado(t.estado) === "Pendiente").length;
+  const proc = list.filter(t => normalizeEstado(t.estado) === "En proceso").length;
   const overdue = list.filter(isOverdue).length;
   return { total, term, rev, pen, proc, overdue, avance: total ? Math.round(term / total * 100) : 0 };
 }
@@ -441,7 +454,7 @@ function _diagEstado(tasks, estado) {
     if (topProj.length > 0) insights.push({ icon: "folder", text: `Por proyecto: ${topProj.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
     if (topPers.length > 0) insights.push({ icon: "users", text: `Por persona: ${topPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
 
-    if (estado === "En revisión" && overdue > 0) actions.push(`Bloquea 30 min hoy para revisar — destrabarías ${overdue} atrasos directos`);
+    if (estado === "En standby" && overdue > 0) actions.push(`Bloquea 30 min hoy para revisar — destrabarías ${overdue} atrasos directos`);
     else if (estado === "En proceso" && overdue > 0) actions.push(`${overdue} en proceso ya están vencidas — acelera o pide ayuda`);
     else if (estado === "Pendiente" && alta > 0) actions.push(`Empieza por las ${alta} de prioridad alta esta semana`);
     else if (estado === "Pendiente" && dueSoon > 0) actions.push(`${dueSoon} vencen esta semana — agéndalas hoy`);
@@ -830,7 +843,7 @@ export default function Board() {
     setTasks(prev => prev.map(t => {
       if (t.id !== taskId) return t;
       const link = { id: makeId(), label, url, fechaSubida: todayStamp() };
-      const next = (t.estado === "Pendiente" || t.estado === "En proceso") ? "En revisión" : t.estado;
+      const next = (t.estado === "Pendiente" || t.estado === "En proceso") ? "En standby" : t.estado;
       return { ...t, links: [...(t.links || []), link], estado: next };
     }));
     setLinkDraft({ label: "", url: "" });
@@ -838,7 +851,7 @@ export default function Board() {
     try {
       await apiCall("addLink", { id: taskId, url, label });
       const t = tasksRef.current.find(t => t.id === taskId);
-      if (t && t.estado === "En revisión") await apiCall("update", { id: taskId, patch: { estado: "En revisión" } });
+      if (t && t.estado === "En standby") await apiCall("update", { id: taskId, patch: { estado: "En standby" } });
       recentlyModified.current[taskId] = Date.now();
       setSaveStatus(p => ({ ...p, [taskId]: "saved" }));
       setTimeout(() => setSaveStatus(p => p[taskId] === "saved" ? { ...p, [taskId]: "idle" } : p), SAVED_FLASH_MS);
@@ -1213,7 +1226,7 @@ export default function Board() {
               <Metric label="Total" value={metricsGlobal.total} onClick={() => openDiag("total")} />
               <Metric label="Pend." value={metricsGlobal.pen} tone="pendiente" onClick={() => openDiag("estado", { estado: "Pendiente" })} />
               <Metric label="Proceso" value={metricsGlobal.proc} tone="en-proceso" onClick={() => openDiag("estado", { estado: "En proceso" })} />
-              <Metric label="Revisión" value={metricsGlobal.rev} tone="revision" onClick={() => openDiag("estado", { estado: "En revisión" })} />
+              <Metric label="Standby" value={metricsGlobal.rev} tone="en-standby" onClick={() => openDiag("estado", { estado: "En standby" })} />
               <Metric label="Term." value={metricsGlobal.term} tone="terminado" onClick={() => openDiag("estado", { estado: "Terminado" })} />
               <Metric label="Avance" value={`${metricsGlobal.avance}%`} onClick={() => openDiag("avance")} />
             </div>
@@ -1226,7 +1239,7 @@ export default function Board() {
                     <Metric label="Total" value={m.total} />
                     <Metric label="Pend." value={m.pen} tone="pendiente" />
                     <Metric label="Proc." value={m.proc} tone="en-proceso" />
-                    <Metric label="Rev." value={m.rev} tone="revision" />
+                    <Metric label="Rev." value={m.rev} tone="en-standby" />
                     <Metric label="Term." value={m.term} tone="terminado" />
                   </div>
                 </div>
@@ -1447,7 +1460,7 @@ function ProyectoTileCompact({ proyecto, persona, empresa, index, tileKey, tasks
   const Icon = iconForProject(proyecto);
   const pen = tasks.filter(t => t.estado === "Pendiente").length;
   const proc = tasks.filter(t => t.estado === "En proceso").length;
-  const rev = tasks.filter(t => t.estado === "En revisión").length;
+  const rev = tasks.filter(t => t.estado === "En standby").length;
   const term = tasks.filter(t => t.estado === "Terminado").length;
   const altas = tasks.filter(t => t.prioridad === "Alta" && t.estado !== "Terminado").length;
   const [over, setOver] = useState(false);
@@ -1473,7 +1486,7 @@ function ProyectoTileCompact({ proyecto, persona, empresa, index, tileKey, tasks
         <div className="proyecto-tile-stats">
           <span className="stat-pen" title="Pendientes">{pen}</span>
           <span className="stat-proc" title="En proceso">{proc}</span>
-          <span className="stat-sub" title="En revisión">{rev}</span>
+          <span className="stat-sub" title="En standby">{rev}</span>
           <span className="stat-term" title="Terminadas">{term}</span>
         </div>
       </button>
@@ -1970,7 +1983,7 @@ function PresentAvance({ tasks }) {
   const term = active.filter(t => normalizeEstado(t.estado) === "Terminado").length;
   const pend = active.filter(t => normalizeEstado(t.estado) === "Pendiente").length;
   const proc = active.filter(t => normalizeEstado(t.estado) === "En proceso").length;
-  const rev = active.filter(t => normalizeEstado(t.estado) === "En revisión").length;
+  const rev = active.filter(t => normalizeEstado(t.estado) === "En standby").length;
   const pct = total > 0 ? Math.round((term / total) * 100) : 0;
   return (
     <div>
@@ -2043,7 +2056,7 @@ function PresentUpcoming({ tasks, colorOverrides }) {
 function PresentActivity({ tasks, colorOverrides }) {
   const today = new Date();
   const weekAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
-  const recent = tasks.filter(t => { if (t.archivada || t.borrada) return false; const ref = t.fechaTerminado || t.actualizado; return ref && new Date(ref) >= weekAgo && (normalizeEstado(t.estado) === "Terminado" || normalizeEstado(t.estado) === "En revisión"); }).sort((a, b) => new Date(b.fechaTerminado || b.actualizado) - new Date(a.fechaTerminado || a.actualizado)).slice(0, 8);
+  const recent = tasks.filter(t => { if (t.archivada || t.borrada) return false; const ref = t.fechaTerminado || t.actualizado; return ref && new Date(ref) >= weekAgo && (normalizeEstado(t.estado) === "Terminado" || normalizeEstado(t.estado) === "En standby"); }).sort((a, b) => new Date(b.fechaTerminado || b.actualizado) - new Date(a.fechaTerminado || a.actualizado)).slice(0, 8);
   if (recent.length === 0) return <div className="present-empty">Sin actividad reciente.</div>;
   return (<div className="present-list">{recent.map(t => { const palette = personPalette(t.responsable, colorOverrides); const verb = normalizeEstado(t.estado) === "Terminado" ? "completó" : "subió a revisión"; return (<div key={t.id} className="pl-row"><div className="pl-asg" style={{ color: palette.text }}><PersonaAvatar name={t.responsable} size={20} colorOverrides={colorOverrides} />{(t.responsable || "").split(" ")[0]}</div><div className="pl-verb">{verb}</div><div className="pl-title">{t.actividad}</div><div className="pl-proj">{t.proyecto}</div></div>); })}</div>);
 }
@@ -2168,7 +2181,7 @@ function TimelineView({ projectsList, setSelectedTaskId, colorOverrides }) {
       <div className="tl-legend">
         <span><span className="est-dot-pendiente tl-dot-legend" /> Pendiente</span>
         <span><span className="est-dot-en-proceso tl-dot-legend" /> En proceso</span>
-        <span><span className="est-dot-en-revision tl-dot-legend" /> En revisión</span>
+        <span><span className="est-dot-en-standby tl-dot-legend" /> En standby</span>
         <span><span className="est-dot-terminado tl-dot-legend" /> Terminado</span>
       </div>
     </div>
@@ -2464,7 +2477,7 @@ function GlobalStyles() {
       .kanban-col-header { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.55rem; border-bottom: 1px solid #ECECEC; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
       .kanban-col-pendiente .kanban-col-header { background: #F1F5F9; color: #475569; }
       .kanban-col-en-proceso .kanban-col-header { background: #FEF3C7; color: #92400E; }
-      .kanban-col-en-revision .kanban-col-header { background: #DBEAFE; color: #1E40AF; }
+      .kanban-col-en-standby .kanban-col-header { background: #DBEAFE; color: #1E40AF; }
       .kanban-col-terminado .kanban-col-header { background: #D1FAE5; color: #065F46; }
       .kanban-count { background: rgba(0,0,0,0.08); padding: 0.05rem 0.35rem; min-width: 18px; text-align: center; font-size: 0.6rem; }
       .kanban-col-body { padding: 0.35rem; }
@@ -2505,7 +2518,7 @@ function GlobalStyles() {
       .pipe { display: flex; flex-direction: column; align-items: center; padding: 0.2rem 0.1rem; font-size: 0.58rem; font-weight: 700; }
       .pipe-n { font-size: 0.85rem; font-weight: 800; }
       .pipe-l { letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
-      .pipe-pendiente { background: #F1F5F9; color: #475569; } .pipe-en-proceso { background: #FEF3C7; color: #92400E; } .pipe-en-revision { background: #DBEAFE; color: #1E40AF; } .pipe-terminado { background: #D1FAE5; color: #065F46; }
+      .pipe-pendiente { background: #F1F5F9; color: #475569; } .pipe-en-proceso { background: #FEF3C7; color: #92400E; } .pipe-en-standby { background: #DBEAFE; color: #1E40AF; } .pipe-terminado { background: #D1FAE5; color: #065F46; }
       .proj-row-team { display: flex; align-items: center; }
       .proj-row-team > * { margin-left: -4px; border: 2px solid #FFF; }
       .proj-row-team > *:first-child { margin-left: 0; }
@@ -2531,7 +2544,7 @@ function GlobalStyles() {
       @media (max-width:640px){ .estados-view{ grid-template-columns: 1fr; } }
       .estado-col { background: #FFF; border: 1px solid #ECECEC; min-height: 80px; }
       .estado-col.over { border-color: #000; background: #F3F3F3; }
-      .estado-col-pendiente { border-top: 3px solid #94A3B8; } .estado-col-en-proceso { border-top: 3px solid #F59E0B; } .estado-col-en-revision { border-top: 3px solid #3B82F6; } .estado-col-terminado { border-top: 3px solid #10B981; }
+      .estado-col-pendiente { border-top: 3px solid #94A3B8; } .estado-col-en-proceso { border-top: 3px solid #F59E0B; } .estado-col-en-standby { border-top: 3px solid #3B82F6; } .estado-col-terminado { border-top: 3px solid #10B981; }
       .estado-col-header { display: flex; justify-content: space-between; align-items: center; padding: 0.55rem 0.7rem; border-bottom: 1px solid #ECECEC; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
       .estado-col-count { background: rgba(0,0,0,0.08); padding: 0.1rem 0.4rem; font-size: 0.65rem; }
       .estado-col-body { padding: 0.45rem; display: flex; flex-direction: column; gap: 0.4rem; }
@@ -2565,7 +2578,7 @@ function GlobalStyles() {
       .cal-cell.today .cal-cell-num { background: #1a1a1a; color: #fff; border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; }
       .cal-cell-tasks { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
       .cal-task { font-size: 0.6rem; font-weight: 600; padding: 0.1rem 0.25rem; border-radius: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #999; background: #fff; }
-      .cal-task.est-pendiente { border-left-color: #94A3B8; } .cal-task.est-en-proceso { border-left-color: #F59E0B; } .cal-task.est-en-revision { border-left-color: #3B82F6; } .cal-task.est-terminado { border-left-color: #10B981; opacity: 0.6; }
+      .cal-task.est-pendiente { border-left-color: #94A3B8; } .cal-task.est-en-proceso { border-left-color: #F59E0B; } .cal-task.est-en-standby { border-left-color: #3B82F6; } .cal-task.est-terminado { border-left-color: #10B981; opacity: 0.6; }
       .cal-task-txt { display: block; }
       .cal-more { font-size: 0.58rem; color: #888; font-weight: 600; padding-left: 0.25rem; }
 
@@ -2652,7 +2665,7 @@ function GlobalStyles() {
       .pri-chip-alta { background: #FEE2E2; color: #991B1B; } .pri-chip-media { background: #FEF3C7; color: #92400E; } .pri-chip-baja { background: #F3F3F3; color: #555; }
       .est-chip { display: inline-flex; align-items: center; padding: 0.15rem 0.5rem; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
       .est-chip.mini { padding: 0.08rem 0.35rem; font-size: 0.58rem; }
-      .est-pendiente { background: #F3F3F3; color: #555; } .est-en-proceso { background: #FEF3C7; color: #92400E; } .est-en-revision { background: #DBEAFE; color: #1E40AF; } .est-terminado { background: #D1FAE5; color: #065F46; }
+      .est-pendiente { background: #F3F3F3; color: #555; } .est-en-proceso { background: #FEF3C7; color: #92400E; } .est-en-standby { background: #DBEAFE; color: #1E40AF; } .est-terminado { background: #D1FAE5; color: #065F46; }
       .deadline-badge { display: inline-flex; align-items: center; padding: 0.1rem 0.35rem; font-size: 0.6rem; font-weight: 700; }
       .deadline-c { padding: 0.06rem 0.3rem; font-size: 0.58rem; }
       .deadline-red { background: #FEE2E2; color: #991B1B; } .deadline-orange { background: #FED7AA; color: #9A3412; } .deadline-green { background: #D1FAE5; color: #065F46; } .deadline-gray { background: #F3F3F3; color: #777; }
@@ -2668,7 +2681,7 @@ function GlobalStyles() {
       .metric-card { background: #FFF; border: 1px solid #ECECEC; padding: 0.55rem 0.75rem; border-left-width: 4px; }
       .metric-card.metric-pendiente { border-left-color: #94A3B8; background: #F8FAFC; }
       .metric-card.metric-en-proceso { border-left-color: #F59E0B; background: #FEF8E7; }
-      .metric-card.metric-subido,.metric-card.metric-en-revision { border-left-color: #3B82F6; background: #EFF4FF; }
+      .metric-card.metric-subido,.metric-card.metric-en-standby { border-left-color: #3B82F6; background: #EFF4FF; }
       .metric-card.metric-terminado { border-left-color: #10B981; background: #ECFDF5; }
       .metric-value { font-family: 'Playfair Display', serif; font-size: 1.25rem; font-weight: 700; line-height: 1; }
       .metric-label { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #888; margin-top: 0.15rem; }
@@ -2759,8 +2772,8 @@ function GlobalStyles() {
       .dark .form-derived { background: #15171d; color: #bbb; }
 
       /* ============ ESTADO DOTS (bitácora + timeline) ============ */
-      .bitacora-dot, .est-dot-pendiente, .est-dot-en-proceso, .est-dot-en-revision, .est-dot-terminado { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-      .est-dot-pendiente { background: #94A3B8; } .est-dot-en-proceso { background: #F59E0B; } .est-dot-en-revision { background: #3B82F6; } .est-dot-terminado { background: #10B981; }
+      .bitacora-dot, .est-dot-pendiente, .est-dot-en-proceso, .est-dot-en-revision, .est-dot-en-standby, .est-dot-terminado { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+      .est-dot-pendiente { background: #94A3B8; } .est-dot-en-proceso { background: #F59E0B; } .est-dot-en-revision, .est-dot-en-standby { background: #3B82F6; } .est-dot-terminado { background: #10B981; }
 
       /* ============ TIMELINE / GANTT ============ */
       .timeline-view { padding: 1rem 1.2rem; overflow-x: auto; }
@@ -2928,11 +2941,11 @@ function GlobalStyles() {
       .dark .proyecto-tile-kanban { background: #14171d; }
       .dark .kanban-col-pendiente .kanban-col-header { background: #232730; color: #b6bcc8; }
       .dark .kanban-col-en-proceso .kanban-col-header { background: #2e2417; color: #e6c89a; }
-      .dark .kanban-col-en-revision .kanban-col-header { background: #1a2435; color: #93b4e8; }
+      .dark .kanban-col-en-standby .kanban-col-header { background: #1a2435; color: #93b4e8; }
       .dark .kanban-col-terminado .kanban-col-header { background: #16291f; color: #86d4a5; }
       .dark .metric-card.metric-pendiente { background: #1c1f26; border-left-color: #6b7280; }
       .dark .metric-card.metric-en-proceso { background: #221e15; border-left-color: #d4a663; }
-      .dark .metric-card.metric-en-revision { background: #161d2a; border-left-color: #5b8edd; }
+      .dark .metric-card.metric-en-standby { background: #161d2a; border-left-color: #5b8edd; }
       .dark .metric-card.metric-terminado { background: #15211a; border-left-color: #4eb27a; }
       .dark .risk-card.risk-critico { background: #2a1416; border-left-color: #d83a3a; }
       .dark .risk-card.risk-riesgo { background: #2a2014; border-left-color: #d4a663; }
@@ -2948,11 +2961,11 @@ function GlobalStyles() {
       .dark .stat-term { background: #15211a; color: #86d4a5; }
       .dark .pipe-pendiente { background: #232730; color: #b6bcc8; }
       .dark .pipe-en-proceso { background: #2e2417; color: #e6c89a; }
-      .dark .pipe-en-revision { background: #1a2435; color: #93b4e8; }
+      .dark .pipe-en-standby { background: #1a2435; color: #93b4e8; }
       .dark .pipe-terminado { background: #16291f; color: #86d4a5; }
       .dark .est-pendiente { background: #232730; color: #b6bcc8; }
       .dark .est-en-proceso { background: #2e2417; color: #e6c89a; }
-      .dark .est-en-revision { background: #1a2435; color: #93b4e8; }
+      .dark .est-en-standby { background: #1a2435; color: #93b4e8; }
       .dark .est-terminado { background: #16291f; color: #86d4a5; }
 
       /* ===== EXPORT EJECUTIVO ENRIQUECIDO (deploy 4) ===== */
