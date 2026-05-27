@@ -600,15 +600,8 @@ export default function Board() {
   }
 
   // Eliminar DEFINITIVO (borra la fila del Sheet de verdad)
-  async function deleteForever(taskId) {
-    const t = tasksRef.current.find(t => t.id === taskId);
-    const ok = await askConfirm({ title: "Eliminar para siempre", message: `"${t?.actividad || taskId}" se borrará del Sheet permanentemente. Esto NO se puede deshacer.`, confirmLabel: "Sí, eliminar para siempre" });
-    if (!ok) return;
-    const backup = t;
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-    try { await apiCall("delete", { id: taskId }); delete recentlyModified.current[taskId]; }
-    catch (err) { if (backup) setTasks(prev => [backup, ...prev]); alert("Error al eliminar: " + err.message); }
-  }
+  // deleteForever() ELIMINADA en v8 por política de seguridad.
+  // Las tareas nunca se borran del Sheet: la papelera solo usa soft-delete (borrada=TRUE) y restore (borrada=FALSE).
 
   function changeStatusByDrag(taskId, newStatus) { updateTaskField(taskId, { estado: newStatus }, true); }
   function closeSubboard() { if (selectedTaskId) flushTask(selectedTaskId); setSelectedTaskId(null); }
@@ -1029,7 +1022,7 @@ export default function Board() {
       {personaPanel && <PersonaDashboard persona={personaPanel} tasks={tasks} colorOverrides={colorOverrides} onClose={() => setPersonaPanel(null)} onOpenTask={(id) => { setPersonaPanel(null); setSelectedTaskId(id); }} />}
       {showExport && <ExportView tasks={filteredTasks} metricsByEmpresa={metricsByEmpresa} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} weekStats={weekStats} onClose={() => setShowExport(false)} />}
       {presenting && <PresentationMode tasks={tasks} weekStats={weekStats} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} colorOverrides={colorOverrides} onClose={() => setPresenting(false)} />}
-      {showTrash && <TrashView tasks={trashedTasks} colorOverrides={colorOverrides} onRestore={restoreTask} onDeleteForever={deleteForever} onClose={() => setShowTrash(false)} />}
+      {showTrash && <TrashView tasks={trashedTasks} colorOverrides={colorOverrides} onRestore={restoreTask} onClose={() => setShowTrash(false)} />}
 
       <ConfirmModal dialog={confirmDialog} />
       <GlobalStyles />
@@ -1785,7 +1778,7 @@ function MiSemanaRow({ task, onOpen, colorOverrides }) {
 // ===================================================================
 // VISTA: PAPELERA
 // ===================================================================
-function TrashView({ tasks, colorOverrides, onRestore, onDeleteForever, onClose }) {
+function TrashView({ tasks, colorOverrides, onRestore, onClose }) {
   return (
     <div className="settings-overlay" onClick={onClose}>
       <div className="settings-box trash-box" onClick={e => e.stopPropagation()}>
@@ -1793,7 +1786,7 @@ function TrashView({ tasks, colorOverrides, onRestore, onDeleteForever, onClose 
           <div>
             <p className="yo-eyebrow"><Trash2 size={11} style={{display:'inline',marginRight:4}}/>Papelera</p>
             <h3 className="settings-title">Tareas borradas</h3>
-            <p className="settings-sub">Restaura lo que borraste por error, o elimínalo para siempre.</p>
+            <p className="settings-sub">Restaura lo que borraste por error. Nada se elimina del Sheet.</p>
           </div>
           <button onClick={onClose} className="btn-ghost"><X size={14}/></button>
         </header>
@@ -1810,11 +1803,11 @@ function TrashView({ tasks, colorOverrides, onRestore, onDeleteForever, onClose 
                 </div>
                 <div className="trash-actions">
                   <button onClick={() => onRestore(t.id)} className="trash-restore"><RotateCcw size={12}/>Restaurar</button>
-                  <button onClick={() => onDeleteForever(t.id)} className="trash-forever"><Trash2 size={12}/>Eliminar</button>
                 </div>
               </div>
             );
           })}
+          <p className="trash-note">Las tareas borradas se conservan en el Sheet. Para purgarlas definitivamente, edita la columna <code>borrada</code> directamente desde Google Sheets.</p>
         </div>
       </div>
     </div>
@@ -2304,6 +2297,10 @@ function GlobalStyles() {
       .trash-restore { display: inline-flex; align-items: center; gap: 0.3rem; background: #1a1a1a; color: #fff; border: none; cursor: pointer; padding: 0.4rem 0.7rem; font-size: 0.72rem; font-weight: 600; border-radius: 4px; }
       .trash-forever { display: inline-flex; align-items: center; gap: 0.3rem; background: #fff; color: #b91c1c; border: 1px solid #fca5a5; cursor: pointer; padding: 0.4rem 0.7rem; font-size: 0.72rem; font-weight: 600; border-radius: 4px; }
       .trash-forever:hover { background: #fef2f2; }
+      .trash-note { font-size: 0.72rem; color: #888; padding: 0.9rem 1.5rem 0.4rem; line-height: 1.5; }
+      .trash-note code { background: #F1F1F1; padding: 0.05rem 0.3rem; border-radius: 3px; font-size: 0.7rem; }
+      .dark .trash-note { color: #9aa0aa; }
+      .dark .trash-note code { background: #2a2d34; }
 
       /* ============================================================ */
       /* ===========   MEJORA ESTÉTICA v2 (refinamiento)  =========== */
