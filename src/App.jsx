@@ -28,6 +28,29 @@ const SAVED_FLASH_MS = 1800;
 const CACHE_KEY = "aurum-cache-v5";
 const THEME_KEY = "aurum-theme";
 
+
+class ErrorBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error("[ErrorBoundary]", error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: "2rem", maxWidth: 640, margin: "3rem auto", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 8, fontFamily: "system-ui" }}>
+          <h2 style={{ color: "#991B1B", marginTop: 0 }}>Algo salió mal</h2>
+          <p style={{ color: "#555" }}>Hubo un error al renderizar esta parte del board. Recarga con Ctrl+Shift+R. Si persiste, abre la consola (F12) y manda el error.</p>
+          <details style={{ marginTop: "1rem" }}>
+            <summary style={{ cursor: "pointer", color: "#777", fontSize: "0.85rem" }}>Detalles técnicos</summary>
+            <pre style={{ fontSize: "0.75rem", overflow: "auto", color: "#444", background: "#fff", padding: "0.5rem" }}>{String(this.state.error && this.state.error.stack || this.state.error)}</pre>
+          </details>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: "1rem", padding: "0.5rem 1rem", background: "#1a1a1a", color: "#fff", border: 0, borderRadius: 4, cursor: "pointer" }}>Intentar de nuevo</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const SHEET_FIELDS = ["mes", "empresa", "proyecto", "responsable", "semana", "actividad", "entregable", "fecha", "estado", "observaciones", "prioridad", "archivada", "fechaTerminado", "color", "historial", "subtareas", "comentarios", "borrada"];
 const FIELD_TO_SHEET = { mesCompromiso: "mes" };
 
@@ -319,7 +342,7 @@ function patchToSheet(patch) {
 // ===================================================================
 
 // ===================================================================
-// MOTOR DE DIAGNÓSTICOS (deploy 4) — sistema de insights determinístico
+// MOTOR DE DIAGNÓSTICOS (deploy 4) — defensivo, nunca lanza excepciones
 // ===================================================================
 const DIAG_RULES = {
   PERSONA_SOBRECARGADA: 8,
@@ -331,213 +354,240 @@ const DIAG_RULES = {
   VIEJA_DIAS: 7,
 };
 
-function _isOverdueTask(t) {
-  const d = daysUntil(t);
-  return d !== null && d < 0 && normalizeEstado(t.estado) !== "Terminado";
+function _safeDaysUntil(t) {
+  try { if (!t) return null; return daysUntil(t); } catch { return null; }
 }
-
+function _safeNormEstado(t) {
+  try { if (!t || !t.estado) return "Pendiente"; return normalizeEstado(t.estado); } catch { return "Pendiente"; }
+}
+function _isOverdueTask(t) {
+  if (!t) return false;
+  const d = _safeDaysUntil(t);
+  return d !== null && d < 0 && _safeNormEstado(t) !== "Terminado";
+}
 function _sortByUrgency(tasks) {
+  if (!Array.isArray(tasks)) return [];
   return [...tasks].sort((a, b) => {
-    const da = daysUntil(a);
-    const db = daysUntil(b);
+    const da = _safeDaysUntil(a);
+    const db = _safeDaysUntil(b);
     if (da === null && db === null) return 0;
     if (da === null) return 1;
     if (db === null) return -1;
     return da - db;
   });
 }
-
 function _topN(obj, n = 3) {
-  return Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
+  try { return Object.entries(obj || {}).sort((a, b) => b[1] - a[1]).slice(0, n); } catch { return []; }
 }
-
 function _groupCount(tasks, key) {
   const r = {};
-  tasks.forEach(t => { const k = t[key]; if (k) r[k] = (r[k] || 0) + 1; });
+  if (!Array.isArray(tasks)) return r;
+  tasks.forEach(t => { try { const k = t && t[key]; if (k) r[k] = (r[k] || 0) + 1; } catch {} });
   return r;
 }
 
-function runDiagnostics(allTasks, mode, params = {}) {
-  const active = allTasks.filter(t => !t.archivada && !t.borrada);
+function _emptyResult(title = "Sin información") {
+  return { title, tasks: [], insights: [], actions: [] };
+}
 
-  if (mode === "estado") {
-    const estado = params.estado;
-    const tasks = active.filter(t => normalizeEstado(t.estado) === estado);
-    return _diagEstado(tasks, estado);
+function runDiagnostics(allTasks, mode, params = {}) {
+  try {
+    if (!Array.isArray(allTasks)) return _emptyResult();
+    const active = allTasks.filter(t => t && !t.archivada && !t.borrada);
+
+    if (mode === "estado") {
+      const estado = params && params.estado;
+      if (!estado) return _emptyResult();
+      const tasks = active.filter(t => _safeNormEstado(t) === estado);
+      return _diagEstado(tasks, estado);
+    }
+    if (mode === "atrasadas") {
+      const tasks = active.filter(_isOverdueTask);
+      return _diagAtrasadas(tasks);
+    }
+    if (mode === "avance") return _diagAvance(active);
+    if (mode === "total") return _diagTotal(active);
+    if (mode === "proyecto") {
+      const key = params && params.projectKey;
+      if (!key) return _emptyResult();
+      const tasks = active.filter(t => `${t.empresa}::${t.proyecto}` === key);
+      return _diagProyecto(tasks, params.empresa, params.proyecto);
+    }
+    if (mode === "persona") {
+      const persona = params && params.persona;
+      if (!persona) return _emptyResult();
+      const tasks = active.filter(t => t.responsable === persona);
+      return _diagPersona(tasks, persona);
+    }
+    return _emptyResult();
+  } catch (err) {
+    console.error("[runDiagnostics]", err);
+    return _emptyResult("Error al calcular diagnóstico");
   }
-  if (mode === "atrasadas") {
-    const tasks = active.filter(_isOverdueTask);
-    return _diagAtrasadas(tasks);
-  }
-  if (mode === "avance") {
-    return _diagAvance(active);
-  }
-  if (mode === "total") {
-    return _diagTotal(active);
-  }
-  if (mode === "proyecto") {
-    const tasks = active.filter(t => `${t.empresa}::${t.proyecto}` === params.projectKey);
-    return _diagProyecto(tasks, params.empresa, params.proyecto);
-  }
-  if (mode === "persona") {
-    const tasks = active.filter(t => t.responsable === params.persona);
-    return _diagPersona(tasks, params.persona);
-  }
-  return { title: "", tasks: [], insights: [], actions: [] };
 }
 
 function _diagEstado(tasks, estado) {
-  const insights = [], actions = [];
-  const overdue = tasks.filter(_isOverdueTask).length;
-  const alta = tasks.filter(t => t.prioridad === "Alta").length;
-  const dueSoon = tasks.filter(t => { const d = daysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
-  const topProj = _topN(_groupCount(tasks, "proyecto"), 3);
-  const topPers = _topN(_groupCount(tasks, "responsable"), 3);
+  try {
+    const insights = [], actions = [];
+    const overdue = tasks.filter(_isOverdueTask).length;
+    const alta = tasks.filter(t => t && t.prioridad === "Alta").length;
+    const dueSoon = tasks.filter(t => { const d = _safeDaysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
+    const topProj = _topN(_groupCount(tasks, "proyecto"), 3);
+    const topPers = _topN(_groupCount(tasks, "responsable"), 3);
 
-  if (overdue > 0) insights.push({ icon: "alert", text: `${overdue} ya están vencidas` });
-  if (alta > 0) insights.push({ icon: "zap", text: `${alta} de prioridad alta` });
-  if (dueSoon > 0) insights.push({ icon: "clock", text: `${dueSoon} vencen esta semana` });
-  if (topProj.length > 0) insights.push({ icon: "folder", text: `Por proyecto: ${topProj.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
-  if (topPers.length > 0) insights.push({ icon: "users", text: `Por persona: ${topPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+    if (overdue > 0) insights.push({ icon: "alert", text: `${overdue} ya están vencidas` });
+    if (alta > 0) insights.push({ icon: "zap", text: `${alta} de prioridad alta` });
+    if (dueSoon > 0) insights.push({ icon: "clock", text: `${dueSoon} vencen esta semana` });
+    if (topProj.length > 0) insights.push({ icon: "folder", text: `Por proyecto: ${topProj.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+    if (topPers.length > 0) insights.push({ icon: "users", text: `Por persona: ${topPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
 
-  if (estado === "En revisión" && overdue > 0) actions.push(`Bloquea 30 min hoy para revisar — destrabarías ${overdue} atrasos directos`);
-  else if (estado === "En proceso" && overdue > 0) actions.push(`${overdue} en proceso ya están vencidas — acelera o pide ayuda`);
-  else if (estado === "Pendiente" && alta > 0) actions.push(`Empieza por las ${alta} de prioridad alta esta semana`);
-  else if (estado === "Pendiente" && dueSoon > 0) actions.push(`${dueSoon} vencen esta semana — agéndalas hoy`);
-  else if (estado === "Terminado") actions.push(`Excelente — ${tasks.length} cerradas en el periodo. ¡Sigue así!`);
+    if (estado === "En revisión" && overdue > 0) actions.push(`Bloquea 30 min hoy para revisar — destrabarías ${overdue} atrasos directos`);
+    else if (estado === "En proceso" && overdue > 0) actions.push(`${overdue} en proceso ya están vencidas — acelera o pide ayuda`);
+    else if (estado === "Pendiente" && alta > 0) actions.push(`Empieza por las ${alta} de prioridad alta esta semana`);
+    else if (estado === "Pendiente" && dueSoon > 0) actions.push(`${dueSoon} vencen esta semana — agéndalas hoy`);
+    else if (estado === "Terminado" && tasks.length > 0) actions.push(`Excelente — ${tasks.length} cerradas en el periodo. ¡Sigue así!`);
 
-  return { title: `${tasks.length} tareas en ${estado.toLowerCase()}`, tasks: _sortByUrgency(tasks), insights, actions };
+    return { title: `${tasks.length} tareas en ${estado.toLowerCase()}`, tasks: _sortByUrgency(tasks), insights, actions };
+  } catch (err) { console.error("[_diagEstado]", err); return _emptyResult(estado); }
 }
 
 function _diagAtrasadas(tasks) {
-  const insights = [], actions = [];
-  if (tasks.length === 0) return { title: "Sin atrasos", tasks: [], insights: [{ icon: "check", text: "Todo al día. Bien jugado." }], actions: [] };
+  try {
+    const insights = [], actions = [];
+    if (tasks.length === 0) return { title: "Sin atrasos", tasks: [], insights: [{ icon: "check", text: "Todo al día. Bien jugado." }], actions: [] };
+    const sorted = _sortByUrgency(tasks);
+    const masVieja = sorted[0];
+    const diasVieja = masVieja ? Math.abs(_safeDaysUntil(masVieja) || 0) : 0;
+    const viejas = tasks.filter(t => { const d = _safeDaysUntil(t); return d !== null && Math.abs(d) > DIAG_RULES.VIEJA_DIAS; }).length;
+    const topProj = _topN(_groupCount(tasks, "proyecto"), 3);
+    const topPers = _topN(_groupCount(tasks, "responsable"), 3);
 
-  const sorted = _sortByUrgency(tasks);
-  const masVieja = sorted[0];
-  const diasVieja = Math.abs(daysUntil(masVieja) || 0);
-  const viejas = tasks.filter(t => Math.abs(daysUntil(t) || 0) > DIAG_RULES.VIEJA_DIAS).length;
-  const topProj = _topN(_groupCount(tasks, "proyecto"), 3);
-  const topPers = _topN(_groupCount(tasks, "responsable"), 3);
+    if (masVieja) insights.push({ icon: "alert", text: `La más vieja: "${masVieja.actividad || "(sin título)"}" (${masVieja.proyecto || ""}) — ${diasVieja} días vencida` });
+    if (viejas > 0) insights.push({ icon: "clock", text: `${viejas} llevan más de 7 días vencidas` });
+    if (topProj.length > 0) insights.push({ icon: "folder", text: `Concentración: ${topProj.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+    if (topPers.length > 0) insights.push({ icon: "users", text: `Por persona: ${topPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
 
-  insights.push({ icon: "alert", text: `La más vieja: "${masVieja.actividad}" (${masVieja.proyecto}) — ${diasVieja} días vencida` });
-  if (viejas > 0) insights.push({ icon: "clock", text: `${viejas} llevan más de 7 días vencidas` });
-  if (topProj.length > 0) insights.push({ icon: "folder", text: `Concentración: ${topProj.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
-  if (topPers.length > 0) insights.push({ icon: "users", text: `Por persona: ${topPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+    if (topProj.length > 0) {
+      const [topName, topCount] = topProj[0];
+      const pct = Math.round((topCount / tasks.length) * 100);
+      if (pct >= 50) actions.push(`${pct}% de los atrasos están en ${topName} — atácalo primero`);
+    }
+    if (viejas > 0) actions.push(`Empieza por las ${viejas} más viejas — cada día sin atender genera ruido`);
 
-  if (topProj.length > 0) {
-    const [topName, topCount] = topProj[0];
-    const pct = Math.round((topCount / tasks.length) * 100);
-    if (pct >= 50) actions.push(`${pct}% de los atrasos están en ${topName} — atácalo primero`);
-  }
-  if (viejas > 0) actions.push(`Empieza por las ${viejas} más viejas — cada día sin atender genera ruido`);
-
-  return { title: `${tasks.length} tareas atrasadas`, tasks: sorted, insights, actions };
+    return { title: `${tasks.length} tareas atrasadas`, tasks: sorted, insights, actions };
+  } catch (err) { console.error("[_diagAtrasadas]", err); return _emptyResult("Atrasadas"); }
 }
 
 function _diagAvance(tasks) {
-  const insights = [], actions = [];
-  const total = tasks.length;
-  const term = tasks.filter(t => normalizeEstado(t.estado) === "Terminado").length;
-  const pct = total > 0 ? Math.round((term / total) * 100) : 0;
+  try {
+    const insights = [], actions = [];
+    const total = tasks.length;
+    const term = tasks.filter(t => _safeNormEstado(t) === "Terminado").length;
+    const pct = total > 0 ? Math.round((term / total) * 100) : 0;
+    insights.push({ icon: "check", text: `${term} de ${total} tareas completadas` });
 
-  insights.push({ icon: "check", text: `${term} de ${total} tareas completadas` });
+    const byEmp = {};
+    tasks.forEach(t => {
+      if (!t || !t.empresa) return;
+      if (!byEmp[t.empresa]) byEmp[t.empresa] = { total: 0, term: 0 };
+      byEmp[t.empresa].total++;
+      if (_safeNormEstado(t) === "Terminado") byEmp[t.empresa].term++;
+    });
+    Object.entries(byEmp).forEach(([emp, m]) => {
+      const p = m.total > 0 ? Math.round((m.term / m.total) * 100) : 0;
+      insights.push({ icon: "building", text: `${emp}: ${p}% (${m.term}/${m.total})` });
+    });
 
-  const byEmp = {};
-  tasks.forEach(t => {
-    if (!byEmp[t.empresa]) byEmp[t.empresa] = { total: 0, term: 0 };
-    byEmp[t.empresa].total++;
-    if (normalizeEstado(t.estado) === "Terminado") byEmp[t.empresa].term++;
-  });
-  Object.entries(byEmp).forEach(([emp, m]) => {
-    const p = m.total > 0 ? Math.round((m.term / m.total) * 100) : 0;
-    insights.push({ icon: "building", text: `${emp}: ${p}% (${m.term}/${m.total})` });
-  });
+    if (pct < 30) actions.push("Avance bajo — revisa qué está bloqueando el cierre");
+    else if (pct >= 70) actions.push("Buen ritmo — mantén la inercia");
 
-  if (pct < 30) actions.push("Avance bajo — revisa qué está bloqueando el cierre");
-  else if (pct >= 70) actions.push("Buen ritmo — mantén la inercia");
-
-  return { title: `Avance general: ${pct}%`, tasks: [], insights, actions };
+    return { title: `Avance general: ${pct}%`, tasks: [], insights, actions };
+  } catch (err) { console.error("[_diagAvance]", err); return _emptyResult("Avance"); }
 }
 
 function _diagTotal(tasks) {
-  const insights = [], actions = [];
-  const overdue = tasks.filter(_isOverdueTask).length;
-  const open = tasks.filter(t => normalizeEstado(t.estado) !== "Terminado").length;
-  const dueSoon = tasks.filter(t => { const d = daysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
+  try {
+    const insights = [], actions = [];
+    const overdue = tasks.filter(_isOverdueTask).length;
+    const open = tasks.filter(t => _safeNormEstado(t) !== "Terminado").length;
+    const dueSoon = tasks.filter(t => { const d = _safeDaysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
 
-  insights.push({ icon: "folder", text: `${tasks.length} tareas activas en el board` });
-  insights.push({ icon: "clock", text: `${open} abiertas, ${tasks.length - open} terminadas` });
-  if (overdue > 0) insights.push({ icon: "alert", text: `${overdue} vencidas requieren atención inmediata` });
-  if (dueSoon > 0) insights.push({ icon: "zap", text: `${dueSoon} vencen en los próximos 7 días` });
+    insights.push({ icon: "folder", text: `${tasks.length} tareas activas en el board` });
+    insights.push({ icon: "clock", text: `${open} abiertas, ${tasks.length - open} terminadas` });
+    if (overdue > 0) insights.push({ icon: "alert", text: `${overdue} vencidas requieren atención inmediata` });
+    if (dueSoon > 0) insights.push({ icon: "zap", text: `${dueSoon} vencen en los próximos 7 días` });
 
-  if (overdue > 0) actions.push(`Hay ${overdue} atrasos — entra al panel "Atrasadas" para verlos`);
-  return { title: "Salud general del board", tasks: _sortByUrgency(tasks.filter(_isOverdueTask)), insights, actions };
+    if (overdue > 0) actions.push(`Hay ${overdue} atrasos — entra al panel "Atrasadas" para verlos`);
+    return { title: "Salud general del board", tasks: _sortByUrgency(tasks.filter(_isOverdueTask)), insights, actions };
+  } catch (err) { console.error("[_diagTotal]", err); return _emptyResult("Total"); }
 }
 
 function _diagProyecto(tasks, empresa, proyecto) {
-  const insights = [], actions = [];
-  if (tasks.length === 0) return { title: proyecto, tasks: [], insights: [{ icon: "check", text: "Sin tareas activas" }], actions: [] };
+  try {
+    const insights = [], actions = [];
+    if (tasks.length === 0) return { title: proyecto || "Proyecto", tasks: [], insights: [{ icon: "check", text: "Sin tareas activas" }], actions: [] };
 
-  const open = tasks.filter(t => normalizeEstado(t.estado) !== "Terminado");
-  const overdue = tasks.filter(_isOverdueTask);
-  const term = tasks.filter(t => normalizeEstado(t.estado) === "Terminado").length;
-  const pct = tasks.length > 0 ? Math.round((term / tasks.length) * 100) : 0;
-  const overduePct = open.length > 0 ? Math.round((overdue.length / open.length) * 100) : 0;
+    const open = tasks.filter(t => _safeNormEstado(t) !== "Terminado");
+    const overdue = tasks.filter(_isOverdueTask);
+    const term = tasks.filter(t => _safeNormEstado(t) === "Terminado").length;
+    const pct = tasks.length > 0 ? Math.round((term / tasks.length) * 100) : 0;
+    const overduePct = open.length > 0 ? Math.round((overdue.length / open.length) * 100) : 0;
 
-  let risk = "ok";
-  if (overdue.length >= DIAG_RULES.PROYECTO_CRITICO_ATRASOS || overduePct >= DIAG_RULES.PROYECTO_CRITICO_PCT) risk = "crítico";
-  else if (overdue.length >= DIAG_RULES.PROYECTO_RIESGO_ATRASOS) risk = "riesgo";
-  else if (tasks.filter(t => { const d = daysUntil(t); return d !== null && d >= 0 && d <= 7; }).length >= DIAG_RULES.ATENCION_VENCEN_7D) risk = "atención";
+    let risk = "ok";
+    if (overdue.length >= DIAG_RULES.PROYECTO_CRITICO_ATRASOS || overduePct >= DIAG_RULES.PROYECTO_CRITICO_PCT) risk = "crítico";
+    else if (overdue.length >= DIAG_RULES.PROYECTO_RIESGO_ATRASOS) risk = "riesgo";
+    else if (tasks.filter(t => { const d = _safeDaysUntil(t); return d !== null && d >= 0 && d <= 7; }).length >= DIAG_RULES.ATENCION_VENCEN_7D) risk = "atención";
 
-  insights.push({ icon: "check", text: `${pct}% completado (${term}/${tasks.length})` });
-  if (overdue.length > 0) {
-    const masVieja = _sortByUrgency(overdue)[0];
-    const dias = Math.abs(daysUntil(masVieja) || 0);
-    insights.push({ icon: "alert", text: `${overdue.length} atrasadas · la más vieja ${dias} días ("${masVieja.actividad}")` });
-  }
-  const byPers = _topN(_groupCount(open, "responsable"), 3);
-  if (byPers.length > 0) insights.push({ icon: "users", text: `Equipo activo: ${byPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
+    insights.push({ icon: "check", text: `${pct}% completado (${term}/${tasks.length})` });
+    if (overdue.length > 0) {
+      const masVieja = _sortByUrgency(overdue)[0];
+      const dias = masVieja ? Math.abs(_safeDaysUntil(masVieja) || 0) : 0;
+      insights.push({ icon: "alert", text: `${overdue.length} atrasadas · la más vieja ${dias} días ("${(masVieja && masVieja.actividad) || ""}")` });
+    }
+    const byPers = _topN(_groupCount(open, "responsable"), 3);
+    if (byPers.length > 0) insights.push({ icon: "users", text: `Equipo activo: ${byPers.map(([n, c]) => `${n} (${c})`).join(" · ")}` });
 
-  if (risk === "crítico") actions.push(`Estado crítico — agenda revisión inmediata con el equipo`);
-  else if (risk === "riesgo") actions.push(`Hay riesgo — destraba los ${overdue.length} atrasos antes de que crezcan`);
-  else if (risk === "atención") actions.push(`Atención: varias vencen pronto — confirma capacidad esta semana`);
-  else actions.push(`Proyecto sano — mantén el ritmo`);
+    if (risk === "crítico") actions.push(`Estado crítico — agenda revisión inmediata con el equipo`);
+    else if (risk === "riesgo") actions.push(`Hay riesgo — destraba los ${overdue.length} atrasos antes de que crezcan`);
+    else if (risk === "atención") actions.push(`Atención: varias vencen pronto — confirma capacidad esta semana`);
+    else actions.push(`Proyecto sano — mantén el ritmo`);
 
-  return { title: `${proyecto} · ${risk.toUpperCase()}`, risk, tasks: _sortByUrgency(open), insights, actions };
+    return { title: `${proyecto || "Proyecto"} · ${risk.toUpperCase()}`, risk, tasks: _sortByUrgency(open), insights, actions };
+  } catch (err) { console.error("[_diagProyecto]", err); return _emptyResult(proyecto); }
 }
 
 function _diagPersona(tasks, persona) {
-  const insights = [], actions = [];
-  const open = tasks.filter(t => normalizeEstado(t.estado) !== "Terminado");
-  const overdue = tasks.filter(_isOverdueTask);
-  const term = tasks.filter(t => normalizeEstado(t.estado) === "Terminado").length;
-  const dueSoon = tasks.filter(t => { const d = daysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
+  try {
+    const insights = [], actions = [];
+    const open = tasks.filter(t => _safeNormEstado(t) !== "Terminado");
+    const overdue = tasks.filter(_isOverdueTask);
+    const term = tasks.filter(t => _safeNormEstado(t) === "Terminado").length;
+    const dueSoon = tasks.filter(t => { const d = _safeDaysUntil(t); return d !== null && d >= 0 && d <= 7; }).length;
 
-  let estado = "ok";
-  if (open.length >= DIAG_RULES.PERSONA_SOBRECARGADA) estado = "sobrecargada";
-  if (overdue.length >= DIAG_RULES.PERSONA_EN_RIESGO) estado = "en riesgo";
-  if (open.length >= DIAG_RULES.PERSONA_SOBRECARGADA && overdue.length >= DIAG_RULES.PERSONA_EN_RIESGO) estado = "crítica";
+    let estadoP = "ok";
+    if (open.length >= DIAG_RULES.PERSONA_SOBRECARGADA) estadoP = "sobrecargada";
+    if (overdue.length >= DIAG_RULES.PERSONA_EN_RIESGO) estadoP = "en riesgo";
+    if (open.length >= DIAG_RULES.PERSONA_SOBRECARGADA && overdue.length >= DIAG_RULES.PERSONA_EN_RIESGO) estadoP = "crítica";
 
-  insights.push({ icon: "folder", text: `${open.length} abiertas · ${overdue.length} vencidas · ${term} terminadas` });
-  if (dueSoon > 0) insights.push({ icon: "clock", text: `${dueSoon} vencen esta semana` });
+    insights.push({ icon: "folder", text: `${open.length} abiertas · ${overdue.length} vencidas · ${term} terminadas` });
+    if (dueSoon > 0) insights.push({ icon: "clock", text: `${dueSoon} vencen esta semana` });
 
-  const byProj = _topN(_groupCount(open, "proyecto"), 3);
-  if (byProj.length > 0) {
-    const [top, c] = byProj[0];
-    const pct = open.length > 0 ? Math.round((c / open.length) * 100) : 0;
-    insights.push({ icon: "folder", text: `Concentración: ${pct}% en ${top}` });
-  }
+    const byProj = _topN(_groupCount(open, "proyecto"), 3);
+    if (byProj.length > 0) {
+      const [top, c] = byProj[0];
+      const pct = open.length > 0 ? Math.round((c / open.length) * 100) : 0;
+      insights.push({ icon: "folder", text: `Concentración: ${pct}% en ${top}` });
+    }
 
-  if (estado === "crítica") actions.push(`Carga crítica — urge reasignar o aplazar tareas`);
-  else if (estado === "sobrecargada") actions.push(`Sobrecargada — considera reasignar o aplazar 2-3 tareas`);
-  else if (estado === "en riesgo") actions.push(`Atrasos acumulados — prioriza destrabar lo vencido`);
-  else if (open.length === 0) actions.push(`Sin tareas activas — disponible para nuevas asignaciones`);
-  else actions.push(`Carga sana — buen ritmo`);
+    if (estadoP === "crítica") actions.push(`Carga crítica — urge reasignar o aplazar tareas`);
+    else if (estadoP === "sobrecargada") actions.push(`Sobrecargada — considera reasignar o aplazar 2-3 tareas`);
+    else if (estadoP === "en riesgo") actions.push(`Atrasos acumulados — prioriza destrabar lo vencido`);
+    else if (open.length === 0) actions.push(`Sin tareas activas — disponible para nuevas asignaciones`);
+    else actions.push(`Carga sana — buen ritmo`);
 
-  return { title: `${persona} · ${estado}`, estadoPersona: estado, tasks: _sortByUrgency(open), insights, actions };
+    return { title: `${persona || "Persona"} · ${estadoP}`, estadoPersona: estadoP, tasks: _sortByUrgency(open), insights, actions };
+  } catch (err) { console.error("[_diagPersona]", err); return { ..._emptyResult(persona || "Persona"), estadoPersona: "ok" }; }
 }
-
 
 
 export default function Board() {
@@ -1101,6 +1151,7 @@ export default function Board() {
   // RENDER: BOARD PRINCIPAL
   // ===========================================================
   return (
+    <ErrorBoundary>
     <div className={shellClass}>
       <div className="mx-auto max-w-[1760px] px-3 py-4">
         {/* HEADER */}
@@ -1255,6 +1306,7 @@ export default function Board() {
       <ConfirmModal dialog={confirmDialog} />
       <GlobalStyles />
     </div>
+    </ErrorBoundary>
   );
 }
 
@@ -1694,7 +1746,7 @@ function PersonaDashboard({ persona, tasks, colorOverrides, onClose, onOpenTask 
           <button onClick={onClose} className="btn-ghost"><X size={14}/></button>
         </header>
         <div className="dash-body">
-          {(() => { const diag = runDiagnostics(tasks, "persona", { persona }); const estado = diag.estadoPersona; if (estado === "ok") return null; const cls = estado === "crítica" ? "dash-diag-critica" : estado === "sobrecargada" ? "dash-diag-sobrecargada" : "dash-diag-riesgo"; return (<div className={`dash-diag ${cls}`}><div className="dash-diag-status">{estado.toUpperCase()}</div>{diag.actions.length > 0 && <div className="dash-diag-action"><Zap size={11} style={{display:'inline',marginRight:4}}/>{diag.actions[0]}</div>}</div>); })()}
+          {(() => { try { const diag = runDiagnostics(tasks, "persona", { persona }); const estado = diag && diag.estadoPersona; if (!estado || estado === "ok") return null; const cls = estado === "crítica" ? "dash-diag-critica" : estado === "sobrecargada" ? "dash-diag-sobrecargada" : "dash-diag-riesgo"; const action = (diag.actions && diag.actions[0]) || null; return (<div className={`dash-diag ${cls}`}><div className="dash-diag-status">{String(estado).toUpperCase()}</div>{action && <div className="dash-diag-action"><Zap size={11} style={{display:'inline',marginRight:4}}/>{action}</div>}</div>); } catch (e) { console.error("[dash-diag]", e); return null; } })()}
           <div className="dash-metrics">
             <div className="dash-metric"><div className="dash-metric-n">{m.total}</div><div className="dash-metric-l">Total</div></div>
             <div className="dash-metric"><div className="dash-metric-n">{m.pen}</div><div className="dash-metric-l">Pendientes</div></div>
@@ -1817,7 +1869,7 @@ function ExportView({ tasks, metricsByEmpresa, riskyProjects, weekStats, project
               <div key={persona} className="export-exec-persona">
                 <div className="export-exec-persona-head">
                   <div className="export-exec-persona-name">{persona}</div>
-                  <div className="export-exec-persona-meta">{m.openTotal || abiertas.length} abiertas · {m.overdue || 0} vencidas · {m.avance}% avance · <strong>{diag.estadoPersona}</strong></div>
+                  <div className="export-exec-persona-meta">{m.openTotal || abiertas.length} abiertas · {m.overdue || 0} vencidas · {m.avance}% avance · <strong>{diag.estadoPersona || "ok"}</strong></div>
                 </div>
                 {ordenadas.length === 0 ? (
                   <p className="export-exec-persona-empty">Sin tareas abiertas. ✓</p>
@@ -1840,7 +1892,7 @@ function ExportView({ tasks, metricsByEmpresa, riskyProjects, weekStats, project
                     );
                   })
                 )}
-                {diag.actions.length > 0 && <div style={{ fontSize: "0.78rem", color: "#92400E", marginTop: "0.5rem", fontStyle: "italic" }}>💡 {diag.actions[0]}</div>}
+                {diag.actions && diag.actions.length > 0 && <div style={{ fontSize: "0.78rem", color: "#92400E", marginTop: "0.5rem", fontStyle: "italic" }}>💡 {diag.actions[0]}</div>}
               </div>
             );
           })}
