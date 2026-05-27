@@ -11,7 +11,7 @@ import {
 // ===================================================================
 // CONFIGURACION
 // ===================================================================
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrc0lFolxwJQUF7wtPHNymf7AwNtsjVs08ivOl18veuqo-jkv4AkpwjZsGDX60ETph/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyhS-4_1rE2nw1fj3CxuF17WCFSKsg47wUMwJ035rCv_jVW-LuahQg0PfL09Oxe-xYW/exec";
 const SHARED_SECRET = "aurum-2026-x9k7m4q2-secreto";
 
 const ASSETS = {
