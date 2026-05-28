@@ -3100,6 +3100,14 @@ function GlobalStyles() {
       .ai-unlock-btn { padding: 0.5rem 1rem; font-size: 0.78rem; white-space: nowrap; }
       .ai-unlock-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+
+      .ai-unlock-ok { font-size: 0.78rem; color: #B08D57; font-weight: 700; }
+      .ai-unlock-bad { font-size: 0.78rem; color: #b91c1c; font-weight: 600; }
+      .ai-msg-model { margin-top: 6px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em; color: #999; }
+      .ai-msg-model-premium { color: #B08D57; }
+      .dark .ai-msg-model { color: #777; }
+      .dark .ai-msg-model-premium { color: #d4af75; }
+
     `}</style>
   );
 }
@@ -3141,13 +3149,55 @@ function buildAIContext(tasks, projectsList) {
       });
     }
 
-    if (overdue.length > 0) {
-      ctx += "\nTAREAS VENCIDAS (top 15 mas antiguas):\n";
-      _sortByUrgency(overdue).slice(0, 15).forEach(t => {
-        const d = Math.abs(_safeDaysUntil(t) || 0);
-        ctx += "- \"" + (t.actividad || "(sin titulo)") + "\" (" + (t.proyecto || "") + ", " + (t.responsable || "") + "): " + d + " dias vencida\n";
+    // Describe una tarea COMPLETA con TODOS sus campos legibles del portal
+    const describeTaskFull = (t) => {
+      const d = _safeDaysUntil(t);
+      let plazo;
+      if (d == null || isNaN(d)) plazo = "sin fecha";
+      else if (d < 0) plazo = Math.abs(d) + "d VENCIDA";
+      else if (d === 0) plazo = "vence HOY";
+      else plazo = "vence en " + d + "d";
+
+      let s = "* " + (t.actividad || "(sin titulo)") + "\n";
+      s += "  Empresa/Proyecto: " + (t.empresa || "?") + " / " + (t.proyecto || "?") + "\n";
+      s += "  Responsable: " + (t.responsable || "sin asignar") + " | Estado: " + normalizeEstado(t.estado) + " | Prioridad: " + (t.prioridad || "?") + " | " + plazo + "\n";
+      if (t.fecha) s += "  Fecha compromiso: " + t.fecha + "\n";
+      if (t.entregable) s += "  Entregable: " + t.entregable + "\n";
+      if (t.observaciones) s += "  Notas/Observaciones: " + t.observaciones + "\n";
+      const links = t.links || [];
+      if (links.length) s += "  Links/Entregables adjuntos: " + links.map(l => (l.label || l.url || "")).filter(Boolean).join(", ") + "\n";
+      const subs = parseSubtareas(t.subtareas);
+      if (subs.length) {
+        const done = subs.filter(x => x.done).length;
+        s += "  Subtareas (" + done + "/" + subs.length + "): " + subs.map(x => (x.done ? "[hecho] " : "[pendiente] ") + x.texto).join("; ") + "\n";
+      }
+      const coms = parseComentarios(t.comentarios);
+      if (coms.length) s += "  Comentarios: " + coms.map(c => c.autor + " (" + c.fecha + "): " + c.texto).join(" || ") + "\n";
+      const hist = parseHistorial(t.historial);
+      if (hist.length) s += "  Bitacora de cambios: " + hist.map(h => h.fecha + " -> " + h.estado).join(", ") + "\n";
+      return s;
+    };
+
+    // DETALLE COMPLETO de todas las tareas abiertas, agrupadas por estado
+    const noTerminadas = active.filter(t => normalizeEstado(t.estado) !== "Terminado");
+    ctx += "\n===== DETALLE COMPLETO DE TODAS LAS TAREAS ABIERTAS (" + noTerminadas.length + ") =====\n";
+    ESTADOS.filter(e => e !== "Terminado").forEach(estado => {
+      const grupo = noTerminadas.filter(t => normalizeEstado(t.estado) === estado);
+      if (grupo.length) {
+        ctx += "\n--- " + estado.toUpperCase() + " (" + grupo.length + ") ---\n";
+        _sortByUrgency(grupo).forEach(t => { ctx += describeTaskFull(t) + "\n"; });
+      }
+    });
+
+    // Terminadas: detalle reducido (para contexto historico sin inflar demasiado)
+    const terminadas = active.filter(t => normalizeEstado(t.estado) === "Terminado");
+    if (terminadas.length) {
+      ctx += "\n--- TERMINADAS (" + terminadas.length + ") ---\n";
+      terminadas.forEach(t => {
+        ctx += "* " + (t.actividad || "(sin titulo)") + " | " + (t.proyecto || "?") + " | " + (t.responsable || "?") + (t.fechaTerminado ? " | terminada: " + t.fechaTerminado : "") + "\n";
       });
     }
+
     return ctx;
   } catch (err) {
     console.error("[buildAIContext]", err);
@@ -3163,6 +3213,7 @@ function AIChat({ tasks, projectsList, onClose }) {
   const [unlockWord, setUnlockWord] = useState("");
   const [showUnlock, setShowUnlock] = useState(false);
   const [unlockArmed, setUnlockArmed] = useState(false);
+  const [unlockStatus, setUnlockStatus] = useState(null); // null | "checking" | "ok" | "bad" | "error"
   const [lastModel, setLastModel] = useState(null);
   const bodyRef = useRef(null);
 
@@ -3188,6 +3239,24 @@ function AIChat({ tasks, projectsList, onClose }) {
       setError(String((err && err.message) || err));
     }
     setLoading(false);
+  };
+
+  const checkUnlock = async () => {
+    if (!unlockWord.trim()) return;
+    setUnlockStatus("checking");
+    try {
+      const res = await apiCall("checkkey", { unlock: unlockWord });
+      if (res && res.ok && res.premium) {
+        setUnlockArmed(true);
+        setUnlockStatus("ok");
+        setShowUnlock(false);
+      } else {
+        setUnlockArmed(false);
+        setUnlockStatus("bad");
+      }
+    } catch (err) {
+      setUnlockStatus("error");
+    }
   };
 
   const suggestions = [
@@ -3222,21 +3291,27 @@ function AIChat({ tasks, projectsList, onClose }) {
               type="password"
               className="input ai-unlock-input"
               value={unlockWord}
-              onChange={e => { setUnlockWord(e.target.value); setUnlockArmed(false); }}
-              onKeyDown={e => { if (e.key === "Enter" && unlockWord.trim()) { setUnlockArmed(true); setShowUnlock(false); } }}
+              onChange={e => { setUnlockWord(e.target.value); setUnlockArmed(false); setUnlockStatus(null); }}
+              onKeyDown={e => { if (e.key === "Enter" && unlockWord.trim()) checkUnlock(); }}
               placeholder="Clave para modelo avanzado…"
               autoComplete="off"
             />
             <button
               type="button"
               className="yo-btn-primary ai-unlock-btn"
-              disabled={!unlockWord.trim()}
-              onClick={() => { if (unlockWord.trim()) { setUnlockArmed(true); setShowUnlock(false); } }}
-            >Activar</button>
+              disabled={!unlockWord.trim() || unlockStatus === "checking"}
+              onClick={checkUnlock}
+            >{unlockStatus === "checking" ? "Validando…" : "Activar"}</button>
           </div>
         )}
-        {unlockArmed && unlockWord.trim() && !showUnlock && (
-          <div className="ai-unlock-row"><span className="ai-unlock-hint">✓ Clave activada — tu próxima pregunta usará el modelo avanzado</span></div>
+        {!showUnlock && unlockStatus === "ok" && (
+          <div className="ai-unlock-row"><span className="ai-unlock-ok">✓ Clave correcta — modo GPT-5.5 avanzado ACTIVO</span></div>
+        )}
+        {unlockStatus === "bad" && (
+          <div className="ai-unlock-row"><span className="ai-unlock-bad">✗ Clave incorrecta — sigues en GPT-5 mini</span></div>
+        )}
+        {unlockStatus === "error" && (
+          <div className="ai-unlock-row"><span className="ai-unlock-bad">No se pudo validar la clave. Reintenta.</span></div>
         )}
         <div className="ai-body" ref={bodyRef}>
           {messages.length === 0 && !loading && (
@@ -3247,12 +3322,19 @@ function AIChat({ tasks, projectsList, onClose }) {
               </div>
             </div>
           )}
-          {messages.map((m, i) => (
+          {messages.map((m, i) => {
+            const msgPremium = m.model && m.model.indexOf("mini") === -1 && m.model.indexOf("nano") === -1;
+            return (
             <div key={i} className={`ai-msg ai-msg-${m.role}`}>
               {m.role === "assistant" && <span className="ai-msg-icon"><Sparkles size={13} /></span>}
-              <div className="ai-msg-content">{m.content}</div>
+              <div className="ai-msg-content">
+                {m.content}
+                {m.role === "assistant" && m.model && (
+                  <div className={msgPremium ? "ai-msg-model ai-msg-model-premium" : "ai-msg-model"}>{msgPremium ? "⚡ GPT-5.5 avanzado" : "GPT-5 mini"}</div>
+                )}
+              </div>
             </div>
-          ))}
+          );})}
           {loading && <div className="ai-msg ai-msg-assistant"><span className="ai-msg-icon"><Sparkles size={13} /></span><div className="ai-msg-content ai-thinking">Analizando tu board…</div></div>}
           {error && <div className="ai-error"><AlertTriangle size={13} style={{ display: "inline", marginRight: 4 }} />{error}</div>}
         </div>
