@@ -5,7 +5,7 @@ import {
   AlertCircle, CheckCircle2, Clock, Zap, Settings, Eye, EyeOff,
   Play, Archive, Calendar, LayoutGrid, BarChart3, Printer,
   Sun, Moon, AlertTriangle, History, Trash2,
-  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send, LogOut, Lock
+  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send, LogOut, Lock, Sparkles
 } from "lucide-react";
 
 // ===================================================================
@@ -635,6 +635,7 @@ function Board({ onLogout }) {
   const [presenting, setPresenting] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [diagPanel, setDiagPanel] = useState({ open: false, mode: null, params: {} });
+  const [showAI, setShowAI] = useState(false);
   const openDiag = (mode, params = {}) => setDiagPanel({ open: true, mode, params });
   const closeDiag = () => setDiagPanel(p => ({ ...p, open: false }));
   const [metricsMode, setMetricsMode] = useState("global"); // global | empresa
@@ -1195,6 +1196,7 @@ function Board({ onLogout }) {
               <button onClick={() => setShowTrash(true)} className="yo-btn-secondary" title="Papelera" style={{ position: "relative" }}><Trash2 size={12}/>{trashedTasks.length > 0 && <span className="trash-cnt">{trashedTasks.length}</span>}</button>
               <button onClick={() => setShowSettings(true)} className="yo-btn-secondary" title="Ajustes de colores"><Settings size={12}/></button>
               <button onClick={() => { if (window.confirm("¿Cerrar sesión y volver a pedir la palabra?")) { onLogout && onLogout(); } }} className="yo-btn-secondary" title="Cerrar sesión"><LogOut size={12}/></button>
+              <button onClick={() => setShowAI(true)} className="yo-btn-secondary ai-trigger" title="Asistente IA"><Sparkles size={12}/></button>
               <button onClick={() => setPresenting(true)} className="yo-btn-secondary" title="Modo presentación"><Play size={12}/></button>
               <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="yo-btn-secondary" title="Tema claro/oscuro">{theme === "dark" ? <Sun size={12}/> : <Moon size={12}/>}</button>
               <button onClick={loadFromRemote} className="yo-btn-secondary" disabled={syncing} title="Forzar lectura"><RefreshCw size={12}/>{syncing ? "…" : ""}</button>
@@ -1316,6 +1318,7 @@ function Board({ onLogout }) {
       {presenting && <PresentationMode tasks={tasks} weekStats={weekStats} riskyProjects={projectsList.filter(p => p.metrics.risk === "critico" || p.metrics.risk === "riesgo")} projectsList={projectsList} metricsByEmpresa={metricsByEmpresa} colorOverrides={colorOverrides} onClose={() => setPresenting(false)} />}
       {showTrash && <TrashView tasks={trashedTasks} colorOverrides={colorOverrides} onRestore={restoreTask} onClose={() => setShowTrash(false)} />}
       <DiagnosticPanel open={diagPanel.open} mode={diagPanel.mode} params={diagPanel.params} tasks={tasks} colorOverrides={colorOverrides} onTaskClick={(id) => setSelectedTaskId(id)} onClose={closeDiag} />
+      {showAI && <AIChat tasks={tasks} projectsList={projectsList} onClose={() => setShowAI(false)} />}
 
       <ConfirmModal dialog={confirmDialog} />
       <GlobalStyles />
@@ -3055,9 +3058,165 @@ function GlobalStyles() {
         .login-foot { color: #777; }
       }
 
+
+      /* ===================== CHAT IA (v9) ===================== */
+      .ai-box { background: #FFF; max-width: 600px; width: 95%; height: 80vh; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.25); border-radius: 10px; animation: pop .18s ease-out; overflow: hidden; }
+      .ai-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 1.1rem 1.4rem; border-bottom: 1px solid #ECECEC; flex-shrink: 0; }
+      .ai-title { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; margin: 0.3rem 0 0; }
+      .ai-body { flex: 1; overflow-y: auto; padding: 1.2rem 1.4rem; display: flex; flex-direction: column; gap: 0.9rem; }
+      .ai-welcome-txt { font-size: 0.88rem; color: #666; margin: 0 0 0.9rem; }
+      .ai-suggestions { display: flex; flex-direction: column; gap: 0.5rem; }
+      .ai-suggestion { text-align: left; padding: 0.7rem 0.9rem; background: #FAFAFA; border: 1px solid #ECECEC; border-radius: 7px; cursor: pointer; font-size: 0.85rem; font-weight: 500; color: #1a1a1a; transition: all .12s ease; font-family: inherit; }
+      .ai-suggestion:hover { border-color: var(--accent); background: #FFFAF0; transform: translateX(2px); }
+      .ai-msg { display: flex; gap: 0.5rem; align-items: flex-start; max-width: 90%; }
+      .ai-msg-user { align-self: flex-end; }
+      .ai-msg-user .ai-msg-content { background: #1a1a1a; color: #FFF; padding: 0.7rem 0.95rem; border-radius: 12px 12px 2px 12px; font-size: 0.86rem; line-height: 1.45; }
+      .ai-msg-assistant { align-self: flex-start; }
+      .ai-msg-icon { display: grid; place-items: center; width: 26px; height: 26px; background: #FFF8EC; color: var(--accent); border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+      .ai-msg-assistant .ai-msg-content { background: #F6F6F4; color: #1a1a1a; padding: 0.7rem 0.95rem; border-radius: 12px 12px 12px 2px; font-size: 0.86rem; line-height: 1.5; white-space: pre-wrap; }
+      .ai-thinking { color: #999; font-style: italic; animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+      .ai-error { background: #FEF2F2; color: #991B1B; border: 1px solid #FCA5A5; padding: 0.6rem 0.8rem; border-radius: 6px; font-size: 0.82rem; }
+      .ai-input-row { display: flex; gap: 0.5rem; padding: 0.9rem 1.4rem; border-top: 1px solid #ECECEC; flex-shrink: 0; }
+      .ai-input { flex: 1; }
+      .ai-send { padding: 0 1rem; }
+      .ai-foot { font-size: 0.68rem; color: #aaa; text-align: center; margin: 0; padding: 0 1rem 0.7rem; flex-shrink: 0; }
+      .ai-trigger { color: var(--accent) !important; border-color: var(--accent) !important; }
+      .dark .ai-box { background: #1a1d24; }
+      .dark .ai-suggestion { background: #14171d; border-color: #2d3139; color: #e5e7eb; }
+      .dark .ai-msg-assistant .ai-msg-content { background: #14171d; color: #e5e7eb; }
+      .dark .ai-welcome-txt { color: #aaa; }
+
     `}</style>
   );
 }
+
+
+// ===================================================================
+// CHAT IA (v9) — pregunta al board en lenguaje natural vía OpenAI
+// ===================================================================
+function buildAIContext(tasks, projectsList) {
+  try {
+    const active = (tasks || []).filter(t => t && !t.archivada && !t.borrada);
+    const total = active.length;
+    const byEstado = {};
+    ESTADOS.forEach(e => { byEstado[e] = active.filter(t => normalizeEstado(t.estado) === e).length; });
+    const overdue = active.filter(_isOverdueTask);
+
+    const byPersona = {};
+    active.forEach(t => {
+      const p = t.responsable || "Sin asignar";
+      if (!byPersona[p]) byPersona[p] = { abiertas: 0, vencidas: 0, terminadas: 0 };
+      if (normalizeEstado(t.estado) === "Terminado") byPersona[p].terminadas++; else byPersona[p].abiertas++;
+      if (_isOverdueTask(t)) byPersona[p].vencidas++;
+    });
+
+    let ctx = "RESUMEN GENERAL:\n";
+    ctx += "Total tareas activas: " + total + "\n";
+    ctx += "Por estado: " + ESTADOS.map(e => e + ": " + byEstado[e]).join(", ") + "\n";
+    ctx += "Tareas vencidas: " + overdue.length + "\n\n";
+
+    ctx += "CARGA POR PERSONA:\n";
+    Object.entries(byPersona).sort((a,b) => (b[1].abiertas) - (a[1].abiertas)).forEach(([p, m]) => {
+      ctx += "- " + p + ": " + m.abiertas + " abiertas, " + m.vencidas + " vencidas, " + m.terminadas + " terminadas\n";
+    });
+
+    if (projectsList && projectsList.length) {
+      ctx += "\nPROYECTOS:\n";
+      projectsList.forEach(p => {
+        ctx += "- " + p.proyecto + " (" + p.empresa + "): " + p.metrics.pct + "% avance, " + p.metrics.overdue + " vencidas, riesgo: " + p.metrics.risk + "\n";
+      });
+    }
+
+    if (overdue.length > 0) {
+      ctx += "\nTAREAS VENCIDAS (top 15 mas antiguas):\n";
+      _sortByUrgency(overdue).slice(0, 15).forEach(t => {
+        const d = Math.abs(_safeDaysUntil(t) || 0);
+        ctx += "- \"" + (t.actividad || "(sin titulo)") + "\" (" + (t.proyecto || "") + ", " + (t.responsable || "") + "): " + d + " dias vencida\n";
+      });
+    }
+    return ctx;
+  } catch (err) {
+    console.error("[buildAIContext]", err);
+    return "No se pudo construir el contexto del board.";
+  }
+}
+
+function AIChat({ tasks, projectsList, onClose }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const bodyRef = useRef(null);
+
+  useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; }, [messages, loading]);
+
+  const ask = async (q) => {
+    const question = (q != null ? q : input).trim();
+    if (!question || loading) return;
+    setInput("");
+    setError("");
+    setMessages(prev => [...prev, { role: "user", content: question }]);
+    setLoading(true);
+    try {
+      const context = buildAIContext(tasks, projectsList);
+      const res = await apiCall("ai", { prompt: question, context });
+      if (res && res.ok && res.answer) {
+        setMessages(prev => [...prev, { role: "assistant", content: res.answer }]);
+      } else {
+        setError((res && res.error) || "No se pudo obtener respuesta de la IA.");
+      }
+    } catch (err) {
+      setError(String((err && err.message) || err));
+    }
+    setLoading(false);
+  };
+
+  const suggestions = [
+    "¿Qué debería priorizar esta semana?",
+    "¿Quién está más cargado y qué le reasigno?",
+    "¿Por qué están en riesgo mis proyectos?",
+    "Dame un resumen ejecutivo para junta",
+  ];
+
+  return (
+    <div className="settings-overlay" onClick={onClose}>
+      <div className="ai-box" onClick={e => e.stopPropagation()}>
+        <header className="ai-header">
+          <div>
+            <p className="yo-eyebrow"><Sparkles size={11} style={{ display: "inline", marginRight: 4 }} />Asistente IA</p>
+            <h3 className="ai-title">Pregúntale a tu board</h3>
+          </div>
+          <button onClick={onClose} className="btn-ghost"><X size={14} /></button>
+        </header>
+        <div className="ai-body" ref={bodyRef}>
+          {messages.length === 0 && !loading && (
+            <div className="ai-welcome">
+              <p className="ai-welcome-txt">Analizo tus tareas en tiempo real. Pregúntame lo que quieras:</p>
+              <div className="ai-suggestions">
+                {suggestions.map((s, i) => <button key={i} className="ai-suggestion" onClick={() => ask(s)}>{s}</button>)}
+              </div>
+            </div>
+          )}
+          {messages.map((m, i) => (
+            <div key={i} className={`ai-msg ai-msg-${m.role}`}>
+              {m.role === "assistant" && <span className="ai-msg-icon"><Sparkles size={13} /></span>}
+              <div className="ai-msg-content">{m.content}</div>
+            </div>
+          ))}
+          {loading && <div className="ai-msg ai-msg-assistant"><span className="ai-msg-icon"><Sparkles size={13} /></span><div className="ai-msg-content ai-thinking">Analizando tu board…</div></div>}
+          {error && <div className="ai-error"><AlertTriangle size={13} style={{ display: "inline", marginRight: 4 }} />{error}</div>}
+        </div>
+        <form className="ai-input-row" onSubmit={(e) => { e.preventDefault(); ask(); }}>
+          <input className="input ai-input" value={input} onChange={e => setInput(e.target.value)} placeholder="Escribe tu pregunta…" disabled={loading} autoFocus />
+          <button type="submit" className="yo-btn-primary ai-send" disabled={loading || !input.trim()}><Send size={14} /></button>
+        </form>
+        <p className="ai-foot">Usa OpenAI · las respuestas pueden tener errores, verifica lo importante</p>
+      </div>
+    </div>
+  );
+}
+
 
 // ===================================================================
 // LOGIN GATE — palabra secreta para entrar al board
