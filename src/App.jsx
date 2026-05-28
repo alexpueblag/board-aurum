@@ -3096,6 +3096,10 @@ function GlobalStyles() {
       .ai-unlock-hint { font-size: 0.7rem; color: var(--accent); font-style: italic; }
       .dark .ai-model-badge { background: #2d3139; color: #aaa; }
 
+
+      .ai-unlock-btn { padding: 0.5rem 1rem; font-size: 0.78rem; white-space: nowrap; }
+      .ai-unlock-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
     `}</style>
   );
 }
@@ -3158,6 +3162,7 @@ function AIChat({ tasks, projectsList, onClose }) {
   const [error, setError] = useState("");
   const [unlockWord, setUnlockWord] = useState("");
   const [showUnlock, setShowUnlock] = useState(false);
+  const [unlockArmed, setUnlockArmed] = useState(false);
   const [lastModel, setLastModel] = useState(null);
   const bodyRef = useRef(null);
 
@@ -3193,14 +3198,17 @@ function AIChat({ tasks, projectsList, onClose }) {
   ];
 
   const isPremium = lastModel && lastModel.indexOf("mini") === -1 && lastModel.indexOf("nano") === -1;
-  const modelLabel = lastModel ? (isPremium ? "GPT-5.5 avanzado" : "GPT-5 mini") : null;
+  const modelLabel = lastModel
+    ? (isPremium ? "GPT-5.5 avanzado" : "GPT-5 mini")
+    : (unlockArmed && unlockWord.trim() ? "Avanzado · listo" : null);
+  const labelIsPremium = isPremium || (!lastModel && unlockArmed && unlockWord.trim());
 
   return (
     <div className="settings-overlay" onClick={onClose}>
       <div className="ai-box" onClick={e => e.stopPropagation()}>
         <header className="ai-header">
           <div>
-            <p className="yo-eyebrow"><Sparkles size={11} style={{ display: "inline", marginRight: 4 }} />Asistente IA{modelLabel && <span className={isPremium ? "ai-model-badge ai-model-premium" : "ai-model-badge"}>{modelLabel}</span>}</p>
+            <p className="yo-eyebrow"><Sparkles size={11} style={{ display: "inline", marginRight: 4 }} />Asistente IA{modelLabel && <span className={labelIsPremium ? "ai-model-badge ai-model-premium" : "ai-model-badge"}>{modelLabel}</span>}</p>
             <h3 className="ai-title">Pregúntale a tu board</h3>
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -3210,9 +3218,25 @@ function AIChat({ tasks, projectsList, onClose }) {
         </header>
         {showUnlock && (
           <div className="ai-unlock-row">
-            <input type="password" className="input ai-unlock-input" value={unlockWord} onChange={e => setUnlockWord(e.target.value)} placeholder="Clave para modelo avanzado…" autoComplete="off" />
-            {unlockWord && <span className="ai-unlock-hint">Se aplicará en tu próxima pregunta</span>}
+            <input
+              type="password"
+              className="input ai-unlock-input"
+              value={unlockWord}
+              onChange={e => { setUnlockWord(e.target.value); setUnlockArmed(false); }}
+              onKeyDown={e => { if (e.key === "Enter" && unlockWord.trim()) { setUnlockArmed(true); setShowUnlock(false); } }}
+              placeholder="Clave para modelo avanzado…"
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="yo-btn-primary ai-unlock-btn"
+              disabled={!unlockWord.trim()}
+              onClick={() => { if (unlockWord.trim()) { setUnlockArmed(true); setShowUnlock(false); } }}
+            >Activar</button>
           </div>
+        )}
+        {unlockArmed && unlockWord.trim() && !showUnlock && (
+          <div className="ai-unlock-row"><span className="ai-unlock-hint">✓ Clave activada — tu próxima pregunta usará el modelo avanzado</span></div>
         )}
         <div className="ai-body" ref={bodyRef}>
           {messages.length === 0 && !loading && (
