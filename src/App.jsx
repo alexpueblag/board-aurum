@@ -3224,11 +3224,13 @@ function AIChat({ tasks, projectsList, onClose }) {
     if (!question || loading) return;
     setInput("");
     setError("");
+    // Historial de la conversación (últimos 10 mensajes) para que la IA mantenga el hilo
+    const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
     setMessages(prev => [...prev, { role: "user", content: question }]);
     setLoading(true);
     try {
       const context = buildAIContext(tasks, projectsList);
-      const res = await apiCall("ai", { prompt: question, context, unlock: unlockWord });
+      const res = await apiCall("ai", { prompt: question, context, unlock: unlockWord, history });
       if (res && res.ok && res.answer) {
         setLastModel(res.model || null);
         setMessages(prev => [...prev, { role: "assistant", content: res.answer, model: res.model }]);
