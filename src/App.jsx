@@ -3087,6 +3087,15 @@ function GlobalStyles() {
       .dark .ai-msg-assistant .ai-msg-content { background: #14171d; color: #e5e7eb; }
       .dark .ai-welcome-txt { color: #aaa; }
 
+
+      /* Clave avanzada y badge de modelo (v9) */
+      .ai-model-badge { display: inline-block; margin-left: 8px; padding: 1px 7px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; border-radius: 10px; background: #EEE; color: #777; text-transform: none; vertical-align: middle; }
+      .ai-model-premium { background: linear-gradient(135deg, #B08D57, #d4af75); color: #FFF; }
+      .ai-unlock-row { display: flex; align-items: center; gap: 0.6rem; padding: 0 1.4rem 0.6rem; }
+      .ai-unlock-input { flex: 1; padding: 0.5rem 0.8rem; font-size: 0.82rem; max-width: 260px; }
+      .ai-unlock-hint { font-size: 0.7rem; color: var(--accent); font-style: italic; }
+      .dark .ai-model-badge { background: #2d3139; color: #aaa; }
+
     `}</style>
   );
 }
@@ -3147,6 +3156,9 @@ function AIChat({ tasks, projectsList, onClose }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [unlockWord, setUnlockWord] = useState("");
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [lastModel, setLastModel] = useState(null);
   const bodyRef = useRef(null);
 
   useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; }, [messages, loading]);
@@ -3160,9 +3172,10 @@ function AIChat({ tasks, projectsList, onClose }) {
     setLoading(true);
     try {
       const context = buildAIContext(tasks, projectsList);
-      const res = await apiCall("ai", { prompt: question, context });
+      const res = await apiCall("ai", { prompt: question, context, unlock: unlockWord });
       if (res && res.ok && res.answer) {
-        setMessages(prev => [...prev, { role: "assistant", content: res.answer }]);
+        setLastModel(res.model || null);
+        setMessages(prev => [...prev, { role: "assistant", content: res.answer, model: res.model }]);
       } else {
         setError((res && res.error) || "No se pudo obtener respuesta de la IA.");
       }
@@ -3179,16 +3192,28 @@ function AIChat({ tasks, projectsList, onClose }) {
     "Dame un resumen ejecutivo para junta",
   ];
 
+  const isPremium = lastModel && lastModel.indexOf("mini") === -1 && lastModel.indexOf("nano") === -1;
+  const modelLabel = lastModel ? (isPremium ? "GPT-5.5 avanzado" : "GPT-5 mini") : null;
+
   return (
     <div className="settings-overlay" onClick={onClose}>
       <div className="ai-box" onClick={e => e.stopPropagation()}>
         <header className="ai-header">
           <div>
-            <p className="yo-eyebrow"><Sparkles size={11} style={{ display: "inline", marginRight: 4 }} />Asistente IA</p>
+            <p className="yo-eyebrow"><Sparkles size={11} style={{ display: "inline", marginRight: 4 }} />Asistente IA{modelLabel && <span className={isPremium ? "ai-model-badge ai-model-premium" : "ai-model-badge"}>{modelLabel}</span>}</p>
             <h3 className="ai-title">Pregúntale a tu board</h3>
           </div>
-          <button onClick={onClose} className="btn-ghost"><X size={14} /></button>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <button onClick={() => setShowUnlock(v => !v)} className="btn-ghost" title="Clave avanzada"><Lock size={13} /></button>
+            <button onClick={onClose} className="btn-ghost"><X size={14} /></button>
+          </div>
         </header>
+        {showUnlock && (
+          <div className="ai-unlock-row">
+            <input type="password" className="input ai-unlock-input" value={unlockWord} onChange={e => setUnlockWord(e.target.value)} placeholder="Clave para modelo avanzado…" autoComplete="off" />
+            {unlockWord && <span className="ai-unlock-hint">Se aplicará en tu próxima pregunta</span>}
+          </div>
+        )}
         <div className="ai-body" ref={bodyRef}>
           {messages.length === 0 && !loading && (
             <div className="ai-welcome">
