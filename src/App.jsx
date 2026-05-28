@@ -5,7 +5,7 @@ import {
   AlertCircle, CheckCircle2, Clock, Zap, Settings, Eye, EyeOff,
   Play, Archive, Calendar, LayoutGrid, BarChart3, Printer,
   Sun, Moon, AlertTriangle, History, Trash2,
-  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send
+  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send, LogOut, Lock
 } from "lucide-react";
 
 // ===================================================================
@@ -603,7 +603,7 @@ function _diagPersona(tasks, persona) {
 }
 
 
-export default function Board() {
+function Board({ onLogout }) {
   const [tasks, setTasks] = useState(() => {
     try { const c = localStorage.getItem(CACHE_KEY); return c ? JSON.parse(c) : []; } catch { return []; }
   });
@@ -1194,6 +1194,7 @@ export default function Board() {
               <button onClick={() => setShowExport(true)} className="yo-btn-secondary" title="Exportar / imprimir"><Printer size={12}/></button>
               <button onClick={() => setShowTrash(true)} className="yo-btn-secondary" title="Papelera" style={{ position: "relative" }}><Trash2 size={12}/>{trashedTasks.length > 0 && <span className="trash-cnt">{trashedTasks.length}</span>}</button>
               <button onClick={() => setShowSettings(true)} className="yo-btn-secondary" title="Ajustes de colores"><Settings size={12}/></button>
+              <button onClick={() => { if (window.confirm("¿Cerrar sesión y volver a pedir la palabra?")) { onLogout && onLogout(); } }} className="yo-btn-secondary" title="Cerrar sesión"><LogOut size={12}/></button>
               <button onClick={() => setPresenting(true)} className="yo-btn-secondary" title="Modo presentación"><Play size={12}/></button>
               <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="yo-btn-secondary" title="Tema claro/oscuro">{theme === "dark" ? <Sun size={12}/> : <Moon size={12}/>}</button>
               <button onClick={loadFromRemote} className="yo-btn-secondary" disabled={syncing} title="Forzar lectura"><RefreshCw size={12}/>{syncing ? "…" : ""}</button>
@@ -3033,6 +3034,86 @@ function GlobalStyles() {
       .dark .dash-diag-action { color: #e5e7eb; }
 
 
+
+      /* ===================== LOGIN GATE (deploy 5) ===================== */
+      .login-gate { position: fixed; inset: 0; background: linear-gradient(180deg, #FFFFFF 0%, #F7F4EF 100%); display: grid; place-items: center; padding: 1rem; font-family: 'Montserrat', system-ui, sans-serif; color: #1a1a1a; z-index: 100000; }
+      .login-box { background: #FFF; border: 1px solid #ECECEC; border-top: 4px solid #B08D57; padding: 2.5rem 2.5rem 2rem; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 25px 60px rgba(0,0,0,0.08); border-radius: 7px; animation: pop .25s ease-out; }
+      .login-icon { display: grid; place-items: center; width: 44px; height: 44px; margin: 0 auto 0.8rem; background: #FFF8EC; color: #B08D57; border-radius: 50%; }
+      .login-title { font-family: 'Playfair Display', serif; font-size: 1.9rem; font-weight: 700; margin: 0.4rem 0 0.3rem; line-height: 1.1; }
+      .login-sub { font-size: 0.88rem; color: #666; margin: 0 0 1.5rem; }
+      .login-input { padding: 0.85rem 1rem; font-size: 1rem; text-align: center; margin-bottom: 0.7rem; letter-spacing: 0.15em; }
+      .login-input:focus { border-color: #B08D57; }
+      .login-error { font-size: 0.8rem; color: #b91c1c; background: #FEF2F2; padding: 0.5rem 0.6rem; border-radius: 4px; margin-bottom: 0.7rem; border: 1px solid #FCA5A5; }
+      .login-btn { width: 100%; padding: 0.75rem; justify-content: center; font-size: 0.88rem; letter-spacing: 0.04em; }
+      .login-foot { font-size: 0.72rem; color: #999; margin: 1.2rem 0 0; letter-spacing: 0.04em; }
+      @media (prefers-color-scheme: dark) {
+        .login-gate { background: linear-gradient(180deg, #0d1015 0%, #14171d 100%); color: #e5e7eb; }
+        .login-box { background: #1a1d24; border-color: #2d3139; }
+        .login-sub { color: #aaa; }
+        .login-input { background: #0f1115; border-color: #2d3139; color: #e5e7eb; }
+        .login-icon { background: #2a2014; }
+        .login-foot { color: #777; }
+      }
+
     `}</style>
   );
 }
+
+// ===================================================================
+// LOGIN GATE — palabra secreta para entrar al board
+// ===================================================================
+const AUTH_KEY = "aurum-auth-v1";
+const SECRET_WORD = "yodesarrollo"; // case-insensitive
+
+function LoginGate({ onSuccess }) {
+  const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+  const tryLogin = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const w = (input || "").trim().toLowerCase();
+    if (w === SECRET_WORD) {
+      try { localStorage.setItem(AUTH_KEY, "1"); } catch {}
+      setError("");
+      onSuccess();
+    } else {
+      setError("Palabra incorrecta. Intenta de nuevo.");
+      setInput("");
+    }
+  };
+  return (
+    <>
+      <GlobalStyles />
+      <div className="login-gate">
+        <div className="login-box">
+          <div className="login-icon"><Lock size={20} /></div>
+          <p className="yo-eyebrow" style={{ textAlign: "center" }}>AURUM ARQUITECTOS · YODESARROLLO</p>
+          <h1 className="login-title">Board operativo</h1>
+          <p className="login-sub">Ingresa la palabra de acceso</p>
+          <form onSubmit={tryLogin}>
+            <input
+              type="password"
+              className="input login-input"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="Palabra de acceso"
+              autoFocus
+              autoComplete="off"
+            />
+            {error && <div className="login-error">{error}</div>}
+            <button type="submit" className="yo-btn-primary login-btn">Entrar</button>
+          </form>
+          <p className="login-foot">Acceso compartido del equipo</p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export default function App() {
+  const [authed, setAuthed] = useState(() => {
+    try { return localStorage.getItem(AUTH_KEY) === "1"; } catch { return false; }
+  });
+  if (!authed) return <LoginGate onSuccess={() => setAuthed(true)} />;
+  return <Board onLogout={() => { try { localStorage.removeItem(AUTH_KEY); } catch {}; setAuthed(false); }} />;
+}
+
