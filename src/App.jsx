@@ -3108,6 +3108,26 @@ function GlobalStyles() {
       .dark .ai-msg-model { color: #777; }
       .dark .ai-msg-model-premium { color: #d4af75; }
 
+
+      /* ===================== AJUSTES MÓVIL (v9) ===================== */
+      @media (max-width: 640px) {
+        /* Briefing: apilar "Esta semana" arriba y "Proyectos en riesgo" abajo */
+        .brief { flex-direction: column; gap: 0.9rem; padding: 0.9rem; }
+        .brief-divider { display: none; }
+        .brief-col-stats { width: 100%; }
+        .brief-stats { justify-content: space-between; gap: 0.5rem; }
+        .brief-stat { min-width: 0; flex: 1; }
+        /* Pestañas deslizables horizontalmente (swipe) */
+        .view-selector { display: flex; width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .view-selector::-webkit-scrollbar { display: none; }
+        .vs-btn { flex: 0 0 auto; white-space: nowrap; padding: 0.55rem 0.75rem; }
+      }
+      @media (max-width: 480px) {
+        /* Tarjetas de proyecto en riesgo: una por fila para que respire el texto */
+        .risk-row { grid-template-columns: 1fr; }
+        .risk-name { white-space: normal; }
+      }
+
     `}</style>
   );
 }
