@@ -1178,7 +1178,7 @@ function Board({ onLogout }) {
                 <h1 className="yo-display text-xl mt-0.5">Board operativo</h1>
                 <p className="text-xs subtle mt-0.5">
                   <GlobalSyncBadge status={globalSync} />
-                  {overdueCount > 0 && <span className="overdue-counter"><AlertTriangle size={11}/>{overdueCount} vencida{overdueCount !== 1 ? "s" : ""}</span>}
+                  {overdueCount > 0 && <button className="overdue-counter overdue-counter-btn" onClick={() => openDiag("atrasadas")} title="Ver detalle de tareas atrasadas"><AlertTriangle size={11}/>{overdueCount} vencida{overdueCount !== 1 ? "s" : ""}</button>}
                   {syncError && <span className="ml-2 text-red-600">· lectura: {syncError}</span>}
                 </p>
               </div>
@@ -2340,6 +2340,7 @@ function DiagnosticPanel({ open, mode, params, tasks, colorOverrides, onTaskClic
                     <div className="diag-task-main">
                       <div className="diag-task-title">{t.actividad}</div>
                       <div className="diag-task-meta">{t.proyecto} · <span style={{ color: pal.text }}>{t.responsable}</span></div>
+                      {t.entregable && <div className="diag-task-entregable">Entregable: {t.entregable}</div>}
                     </div>
                     <div className="diag-task-right">
                       <span className={`est-chip mini est-${estadoSlug(t.estado)}`}>{t.estado}</span>
@@ -3127,6 +3128,13 @@ function GlobalStyles() {
         .risk-row { grid-template-columns: 1fr; }
         .risk-name { white-space: normal; }
       }
+
+
+      /* Badge de vencidas clickeable + entregable en diagnóstico (v9) */
+      .overdue-counter-btn { border: none; cursor: pointer; font: inherit; transition: all .12s ease; }
+      .overdue-counter-btn:hover { filter: brightness(0.92); transform: translateY(-1px); text-decoration: underline; }
+      .diag-task-entregable { font-size: 0.7rem; color: #888; margin-top: 0.2rem; font-style: italic; }
+      .dark .diag-task-entregable { color: #999; }
 
     `}</style>
   );
