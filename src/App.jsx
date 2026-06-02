@@ -11,7 +11,7 @@ import {
 // ===================================================================
 // CONFIGURACION
 // ===================================================================
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyhS-4_1rE2nw1fj3CxuF17WCFSKsg47wUMwJ035rCv_jVW-LuahQg0PfL09Oxe-xYW/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby4EhOo4UkQcdFjaw5evVuLF6MeKXlDf1lJFKQPA6lyrmAWhwk6Gc_VxjqMU3IFZWyM/exec";
 const SHARED_SECRET = "aurum-2026-x9k7m4q2-secreto";
 
 const ASSETS = {
@@ -1538,7 +1538,7 @@ function KanbanCard({ task, onOpen, isDragging, setDraggingId, saveStatus, quick
       <div className="kanban-card-top">
         <PrioridadDot prioridad={task.prioridad} />
         <div className="kanban-card-top-right">
-          {done && <button className="quick-archive-btn" title={arch ? "Desarchivar" : "Archivar"} onClick={(e) => { e.stopPropagation(); quickArchive(task.id, !arch); }}><Archive size={10}/></button>}
+          {(done || task.estado === "En standby") && <button className="quick-archive-btn" title={arch ? "Desarchivar" : "Archivar"} onClick={(e) => { e.stopPropagation(); quickArchive(task.id, !arch); }}><Archive size={10}/></button>}
           <SaveDot status={saveStatus} />
         </div>
       </div>
@@ -1596,7 +1596,7 @@ function TaskListRow({ task, onOpen, colorOverrides, quickArchive }) {
       <div className="task-row-title">{task.actividad}{task.archivada && <Archive size={10} className="task-row-arch"/>}</div>
       <div className="task-row-asg"><PersonaAvatar name={task.responsable} size={18} colorOverrides={colorOverrides} /><span style={{ color: palette.text }}>{(task.responsable || "").split(" ")[0]}</span></div>
       <div className="task-row-date">{done && task.fechaTerminado ? `✓ ${fechaTerminadoCorta(task.fechaTerminado)}` : fechaCorta(task)}</div>
-      <div className="task-row-due">{done ? (<button className="quick-archive-btn" title={task.archivada ? "Desarchivar" : "Archivar"} onClick={(e) => { e.stopPropagation(); quickArchive(task.id, !task.archivada); }}><Archive size={11}/></button>) : <DeadlineBadge task={task} compact />}</div>
+      <div className="task-row-due">{(done || task.estado === "En standby") ? (<button className="quick-archive-btn" title={task.archivada ? "Desarchivar" : "Archivar"} onClick={(e) => { e.stopPropagation(); quickArchive(task.id, !task.archivada); }}><Archive size={11}/></button>) : <DeadlineBadge task={task} compact />}</div>
     </div>
   );
 }
@@ -1645,7 +1645,7 @@ function EstadoCard({ task, onOpen, isDragging, setDraggingId, saveStatus, color
         <div className="estado-card-asg"><PersonaAvatar name={task.responsable} size={16} colorOverrides={colorOverrides} /><span style={{ color: palette.text }}>{(task.responsable || "").split(" ")[0]}</span></div>
         <div className="estado-card-right">
           {done && task.fechaTerminado ? <span className="estado-card-date">✓ {fechaTerminadoCorta(task.fechaTerminado)}</span> : (!done && <DeadlineBadge task={task} compact />)}
-          {done && <button className="quick-archive-btn" title={task.archivada ? "Desarchivar" : "Archivar"} onClick={(e) => { e.stopPropagation(); quickArchive(task.id, !task.archivada); }}><Archive size={9}/></button>}
+          {(done || task.estado === "En standby") && <button className="quick-archive-btn" title={task.archivada ? "Desarchivar" : "Archivar"} onClick={(e) => { e.stopPropagation(); quickArchive(task.id, !task.archivada); }}><Archive size={9}/></button>}
         </div>
       </div>
     </article>
