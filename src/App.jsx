@@ -2577,14 +2577,14 @@ function GlobalStyles() {
       .cal-weekdays { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; margin-bottom: 2px; }
       .cal-weekday { text-align: center; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #888; padding: 0.3rem 0; }
       .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; }
-      .cal-cell { background: #FAFAFA; border: 1px solid #ECECEC; min-height: 92px; padding: 0.25rem; display: flex; flex-direction: column; gap: 0.15rem; }
+      .cal-cell { background: #FAFAFA; border: 1px solid #ECECEC; min-height: 92px; padding: 0.25rem; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; overflow: hidden; }
       .cal-cell-empty { background: transparent; border: none; }
       .cal-cell-num { font-size: 0.7rem; font-weight: 700; color: #555; }
-      .cal-cell.today .cal-cell-num { background: #1a1a1a; color: #fff; border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; }
-      .cal-cell-tasks { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
-      .cal-task { font-size: 0.6rem; font-weight: 600; padding: 0.1rem 0.25rem; border-radius: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #999; background: #fff; }
+      .cal-cell-today { border-color: #B08D57; box-shadow: inset 0 0 0 1px #B08D57; } .cal-cell-today .cal-cell-num { background: #B08D57; color: #fff; border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; }
+      .cal-cell-tasks { display: flex; flex-direction: column; gap: 2px; overflow: hidden; min-width: 0; }
+      .cal-task { font-size: 0.6rem; font-weight: 600; padding: 0.1rem 0.25rem; border-radius: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #999; background: #fff; min-width: 0; max-width: 100%; display: flex; align-items: center; gap: 3px; }
       .cal-task.est-pendiente { border-left-color: #94A3B8; } .cal-task.est-en-proceso { border-left-color: #F59E0B; } .cal-task.est-en-standby { border-left-color: #3B82F6; } .cal-task.est-terminado { border-left-color: #10B981; opacity: 0.6; }
-      .cal-task-txt { display: block; }
+      .cal-task-txt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
       .cal-more { font-size: 0.58rem; color: #888; font-weight: 600; padding-left: 0.25rem; }
 
       /* Dashboard persona */
