@@ -608,6 +608,7 @@ function Board({ onLogout }) {
     try { const c = localStorage.getItem(CACHE_KEY); return c ? JSON.parse(c) : []; } catch { return []; }
   });
   const [filters, setFilters] = useState({ empresa: "Todas", proyecto: "Todos", responsable: "Todos", estado: "Todos", search: "" });
+  const [quickFilter, setQuickFilter] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [newTask, setNewTask] = useState(emptyTask());
   const [linkDraft, setLinkDraft] = useState({ label: "", url: "" });
@@ -922,7 +923,8 @@ function Board({ onLogout }) {
   const archivedCount = useMemo(() => tasks.filter(t => t.archivada).length, [tasks]);
   const allPersonas = useMemo(() => Array.from(new Set(tasks.map(t => t.responsable).filter(Boolean))).sort(), [tasks]);
 
-  const filteredTasks = useMemo(() => {
+  // Lista base: aplica todos los filtros MENOS los chips rápidos (sirve para contar cada chip)
+  const baseTasks = useMemo(() => {
     const term = filters.search.trim().toLowerCase();
     return tasks.filter(t => {
       if (t.borrada) return false;
@@ -938,6 +940,26 @@ function Board({ onLogout }) {
       return true;
     });
   }, [tasks, filters, showArchived]);
+
+  const matchesQuick = (t, key) => {
+    if (key === "atrasadas") return isOverdue(t);
+    if (key === "semana") { const d = daysUntil(t); return t.estado !== "Terminado" && d != null && d >= 0 && d <= 7; }
+    if (key === "alta") return t.prioridad === "Alta" && t.estado !== "Terminado";
+    if (key === "sinfecha") return commitmentDate(t) == null;
+    return true;
+  };
+
+  const quickCounts = useMemo(() => ({
+    atrasadas: baseTasks.filter(t => matchesQuick(t, "atrasadas")).length,
+    semana: baseTasks.filter(t => matchesQuick(t, "semana")).length,
+    alta: baseTasks.filter(t => matchesQuick(t, "alta")).length,
+    sinfecha: baseTasks.filter(t => matchesQuick(t, "sinfecha")).length,
+  }), [baseTasks]);
+
+  const filteredTasks = useMemo(() => {
+    if (!quickFilter) return baseTasks;
+    return baseTasks.filter(t => matchesQuick(t, quickFilter));
+  }, [baseTasks, quickFilter]);
 
   const trashedTasks = useMemo(() => tasks.filter(t => t.borrada), [tasks]);
 
@@ -1173,7 +1195,7 @@ function Board({ onLogout }) {
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <CompanyLogos />
-              <div>
+              <div className="min-w-0">
                 <p className="yo-eyebrow">Aurum Arquitectos · YoDesarrollo</p>
                 <h1 className="yo-display text-xl mt-0.5">Board operativo</h1>
                 <p className="text-xs subtle mt-0.5">
@@ -1253,6 +1275,30 @@ function Board({ onLogout }) {
 
         {/* FILTROS */}
         <section className="mb-3 yo-card p-2">
+          <div className="flex flex-wrap gap-2 mb-2">
+            {[
+              { key: "atrasadas", label: "Atrasadas" },
+              { key: "semana", label: "Vencen esta semana" },
+              { key: "alta", label: "Alta prioridad" },
+              { key: "sinfecha", label: "Sin fecha" },
+            ].map(chip => {
+              const count = quickCounts[chip.key];
+              const on = quickFilter === chip.key;
+              const empty = count === 0;
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  disabled={empty && !on}
+                  onClick={() => setQuickFilter(on ? null : chip.key)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition ${on ? "bg-sky-600 text-white border-sky-600" : empty ? "bg-transparent border-slate-200 text-slate-300 cursor-default dark:border-slate-700 dark:text-slate-600" : "bg-transparent border-slate-300 text-slate-600 hover:border-sky-400 hover:text-sky-600 dark:border-slate-600 dark:text-slate-300"}`}
+                >
+                  {chip.label}
+                  <span className={`ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] px-1 rounded-full text-[10px] font-semibold ${on ? "bg-white/25 text-white" : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300"}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             <Field label="Empresa"><select className="input" value={filters.empresa} onChange={e => setFilters({ ...filters, empresa: e.target.value })}><option>Todas</option>{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
             <Field label="Proyecto"><select className="input" value={filters.proyecto} onChange={e => setFilters({ ...filters, proyecto: e.target.value })}>{projects.map(p => <option key={p}>{p}</option>)}</select></Field>
@@ -2069,7 +2115,7 @@ function PresentActivity({ tasks, colorOverrides }) {
 // ===================================================================
 // SUBCOMPONENTES COMUNES
 // ===================================================================
-function CompanyLogos() { return <div className="flex items-center gap-2"><CompanyLogo name="Aurum Arquitectos" size={32} /><CompanyLogo name="YoDesarrollo" size={32} /></div>; }
+function CompanyLogos() { return <div className="brand-logos flex items-center gap-2"><CompanyLogo name="Aurum Arquitectos" size={32} /><CompanyLogo name="YoDesarrollo" size={32} /></div>; }
 function CompanyLogo({ name, size = 24 }) {
   const url = ASSETS.logos[name];
   if (url) return <img src={url} alt={name} style={{ height: size, width: "auto", objectFit: "contain" }} />;
@@ -2388,6 +2434,9 @@ function GlobalStyles() {
       .field-label { display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #888; margin-bottom: 0.3rem; }
       .diagnostic-banner { display: flex; gap: 0.7rem; align-items: flex-start; background: #FEF3C7; border-left: 4px solid #F59E0B; color: #92400E; padding: 0.85rem 1rem; font-size: 0.8rem; }
       .logo-placeholder { display: grid; place-items: center; background: linear-gradient(135deg, #1a1a1a, #555); color: #fff; font-weight: 800; }
+      .brand-logos { flex-shrink: 0; flex-wrap: wrap; }
+      .brand-logos img { height: 30px !important; width: auto; max-width: 130px; object-fit: contain; display: block; flex-shrink: 0; }
+      @media (max-width: 640px){ .brand-logos img { height: 22px !important; max-width: 96px; } }
       .persona-avatar-placeholder { display: grid; place-items: center; border-radius: 50%; color: #fff; font-weight: 800; }
       .form-derived { font-size: 0.72rem; color: #555; background: #F8F8F8; padding: 0.5rem 0.65rem; border-left: 3px solid #1a1a1a; }
       .panel-soft { background: #FAFAFA; border: 1px solid #ECECEC; }
