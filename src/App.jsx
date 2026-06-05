@@ -5,7 +5,7 @@ import {
   AlertCircle, CheckCircle2, Clock, Zap, Settings, Eye, EyeOff,
   Play, Archive, Calendar, LayoutGrid, BarChart3, Printer,
   Sun, Moon, AlertTriangle, History, Trash2,
-  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send, LogOut, Lock, Sparkles
+  GanttChartSquare, CalendarClock, MessageSquare, RotateCcw, Send, LogOut, Lock, Sparkles, Copy
 } from "lucide-react";
 
 // ===================================================================
@@ -114,6 +114,47 @@ function normalizeUrl(url) {
 function emptyTask() {
   return { mes: "Mayo", mesCompromiso: "Mayo", empresa: "YoDesarrollo", proyecto: "", responsable: "", semana: "", actividad: "", entregable: "", fecha: "", estado: "Pendiente", prioridad: "Media", observaciones: "", links: [], archivada: false, fechaTerminado: "", historial: "", subtareas: "" };
 }
+
+// Plantillas de proyecto: crean de un jalón las tareas típicas. Solo frontend (acción "create" normal).
+const PROJECT_TEMPLATES = [
+  {
+    id: "arq",
+    nombre: "Proyecto arquitectónico (Aurum)",
+    empresa: "Aurum Arquitectos",
+    tasks: [
+      { actividad: "Levantamiento y medición del terreno", entregable: "Plano de levantamiento", prioridad: "Alta" },
+      { actividad: "Anteproyecto / propuesta de diseño", entregable: "Anteproyecto", prioridad: "Alta" },
+      { actividad: "Proyecto ejecutivo (planos)", entregable: "Planos ejecutivos", prioridad: "Alta" },
+      { actividad: "Trámites y permisos", entregable: "Permisos aprobados", prioridad: "Media" },
+      { actividad: "Presupuesto de obra", entregable: "Presupuesto", prioridad: "Media" },
+      { actividad: "Entrega a cliente", entregable: "Paquete final entregado", prioridad: "Media" },
+    ],
+  },
+  {
+    id: "dev",
+    nombre: "Desarrollo de software (YoDesarrollo)",
+    empresa: "YoDesarrollo",
+    tasks: [
+      { actividad: "Definición de requerimientos", entregable: "Documento de requerimientos", prioridad: "Alta" },
+      { actividad: "Diseño UI/UX", entregable: "Prototipo / mockups", prioridad: "Alta" },
+      { actividad: "Desarrollo", entregable: "Funcionalidad construida", prioridad: "Alta" },
+      { actividad: "Pruebas", entregable: "Reporte de pruebas", prioridad: "Media" },
+      { actividad: "Despliegue / entrega", entregable: "Producto en producción", prioridad: "Media" },
+    ],
+  },
+  {
+    id: "generico",
+    nombre: "Proyecto genérico (básico)",
+    empresa: "YoDesarrollo",
+    tasks: [
+      { actividad: "Arranque / kickoff", entregable: "", prioridad: "Media" },
+      { actividad: "Planeación", entregable: "Plan de trabajo", prioridad: "Media" },
+      { actividad: "Ejecución", entregable: "", prioridad: "Media" },
+      { actividad: "Revisión", entregable: "", prioridad: "Media" },
+      { actividad: "Cierre", entregable: "Entrega final", prioridad: "Media" },
+    ],
+  },
+];
 
 // Color helpers
 function hexToRgb(hex) {
@@ -610,6 +651,8 @@ function Board({ onLogout }) {
   const [filters, setFilters] = useState({ empresa: "Todas", proyecto: "Todos", responsable: "Todos", estado: "Todos", search: "" });
   const [quickFilter, setQuickFilter] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [showTemplate, setShowTemplate] = useState(false);
+  const [tplDraft, setTplDraft] = useState({ templateId: "", empresa: "YoDesarrollo", proyecto: "", responsable: "" });
   const [newTask, setNewTask] = useState(emptyTask());
   const [linkDraft, setLinkDraft] = useState({ label: "", url: "" });
   const [comentDraft, setComentDraft] = useState("");
@@ -838,6 +881,62 @@ function Board({ onLogout }) {
     } catch (err) { setSaveStatus(p => ({ ...p, [tempId]: "error", [`${tempId}_err`]: err.message })); }
   }
 
+  async function duplicateTask(srcId) {
+    const src = tasksRef.current.find(t => t.id === srcId);
+    if (!src) return;
+    const tempId = makeId();
+    const histInicial = `${todayStamp()} Pendiente`;
+    const tempTask = {
+      ...src, id: tempId,
+      actividad: `${src.actividad || "Tarea"} (copia)`,
+      estado: "Pendiente",
+      creado: todayStamp(), actualizado: todayStamp(),
+      links: [], comentarios: "", historial: histInicial, subtareas: "",
+      archivada: false, borrada: false, fechaTerminado: "",
+    };
+    setTasks(prev => [tempTask, ...prev]);
+    setSelectedTaskId(tempId);
+    setSaveStatus(p => ({ ...p, [tempId]: "saving" }));
+    try {
+      const sheetTask = patchToSheet({ ...tempTask, mesCompromiso: tempTask.mesCompromiso || tempTask.mes });
+      const result = await apiCall("create", { task: sheetTask });
+      setTasks(prev => prev.map(t => t.id === tempId ? { ...t, id: result.id } : t));
+      setSelectedTaskId(cur => cur === tempId ? result.id : cur);
+      recentlyModified.current[result.id] = Date.now();
+      setSaveStatus(p => { const n = { ...p }; delete n[tempId]; n[result.id] = "saved"; return n; });
+      setTimeout(() => setSaveStatus(p => p[result.id] === "saved" ? { ...p, [result.id]: "idle" } : p), SAVED_FLASH_MS);
+    } catch (err) { setSaveStatus(p => ({ ...p, [tempId]: "error", [`${tempId}_err`]: err.message })); }
+  }
+
+  async function createFromTemplate() {
+    const tpl = PROJECT_TEMPLATES.find(t => t.id === tplDraft.templateId);
+    if (!tpl) { alert("Elige una plantilla."); return; }
+    if (!tplDraft.proyecto.trim() || !tplDraft.responsable.trim()) { alert("Escribe el nombre del proyecto y el responsable."); return; }
+    const base = { empresa: tplDraft.empresa, proyecto: tplDraft.proyecto.trim(), responsable: tplDraft.responsable.trim() };
+    setShowTemplate(false);
+    setTplDraft({ templateId: "", empresa: "YoDesarrollo", proyecto: "", responsable: "" });
+    for (const item of tpl.tasks) {
+      const tempId = makeId();
+      const histInicial = `${todayStamp()} Pendiente`;
+      const tempTask = {
+        ...emptyTask(), ...base,
+        actividad: item.actividad, entregable: item.entregable || "",
+        prioridad: item.prioridad || "Media", estado: "Pendiente",
+        id: tempId, creado: todayStamp(), actualizado: todayStamp(), historial: histInicial,
+      };
+      setTasks(prev => [tempTask, ...prev]);
+      setSaveStatus(p => ({ ...p, [tempId]: "saving" }));
+      try {
+        const sheetTask = patchToSheet({ ...tempTask, mesCompromiso: tempTask.mes });
+        const result = await apiCall("create", { task: sheetTask });
+        setTasks(prev => prev.map(t => t.id === tempId ? { ...t, id: result.id } : t));
+        recentlyModified.current[result.id] = Date.now();
+        setSaveStatus(p => { const n = { ...p }; delete n[tempId]; n[result.id] = "saved"; return n; });
+        setTimeout(() => setSaveStatus(p => p[result.id] === "saved" ? { ...p, [result.id]: "idle" } : p), SAVED_FLASH_MS);
+      } catch (err) { setSaveStatus(p => ({ ...p, [tempId]: "error", [`${tempId}_err`]: err.message })); }
+    }
+  }
+
   async function addLink(taskId) {
     const url = normalizeUrl(linkDraft.url);
     if (!url) return;
@@ -1055,6 +1154,7 @@ function Board({ onLogout }) {
               </div>
               <div className="flex gap-2">
                 {!isTerminada && <button onClick={() => updateTaskField(selectedTask.id, { estado: "Terminado" }, true)} className="yo-btn-primary">Marcar terminada</button>}
+                <button onClick={() => duplicateTask(selectedTask.id)} className="yo-btn-secondary" title="Crear una copia de esta tarea"><Copy size={14}/>Duplicar</button>
                 <button onClick={() => deleteTask(selectedTask.id)} className="yo-btn-danger">Eliminar</button>
               </div>
             </div>
@@ -1222,6 +1322,7 @@ function Board({ onLogout }) {
               <button onClick={() => setPresenting(true)} className="yo-btn-secondary" title="Modo presentación"><Play size={12}/></button>
               <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="yo-btn-secondary" title="Tema claro/oscuro">{theme === "dark" ? <Sun size={12}/> : <Moon size={12}/>}</button>
               <button onClick={loadFromRemote} className="yo-btn-secondary" disabled={syncing} title="Forzar lectura"><RefreshCw size={12}/>{syncing ? "…" : ""}</button>
+              <button onClick={() => setShowTemplate(v => !v)} className="yo-btn-secondary" title="Crear proyecto desde plantilla"><LayoutGrid size={12}/>Plantilla</button>
               <button onClick={() => setShowForm(v => !v)} className="yo-btn-primary"><Plus size={14}/>Tarea</button>
             </div>
           </div>
@@ -1328,6 +1429,29 @@ function Board({ onLogout }) {
             <div className="mt-3 flex justify-end"><button onClick={addTask} className="yo-btn-primary"><Plus size={14}/>Crear en Sheet</button></div>
           </section>
         )}
+
+        {/* FORM PLANTILLA DE PROYECTO */}
+        {showTemplate && (() => {
+          const selTpl = PROJECT_TEMPLATES.find(t => t.id === tplDraft.templateId);
+          return (
+            <section className="mb-3 yo-card p-3">
+              <div className="mb-3 flex items-center justify-between"><h2 className="yo-eyebrow">Nuevo proyecto desde plantilla</h2><button onClick={() => setShowTemplate(false)} className="btn-ghost"><X size={14}/></button></div>
+              <p className="text-xs subtle mb-3">Elige una plantilla y crea de un jalón todas sus tareas típicas (en Pendiente, sin fecha). Las fechas se ponen después.</p>
+              <div className="grid gap-2 md:grid-cols-3">
+                <Field label="Plantilla"><select className="input" value={tplDraft.templateId} onChange={e => { const id = e.target.value; const t = PROJECT_TEMPLATES.find(x => x.id === id); setTplDraft({ ...tplDraft, templateId: id, empresa: t ? t.empresa : tplDraft.empresa }); }}><option value="">— Elige una —</option>{PROJECT_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select></Field>
+                <Field label="Empresa"><select className="input" value={tplDraft.empresa} onChange={e => setTplDraft({ ...tplDraft, empresa: e.target.value })}>{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
+                <Field label="Responsable (existente o nuevo)"><input className="input" list="dl-responsables" value={tplDraft.responsable} onChange={e => setTplDraft({ ...tplDraft, responsable: e.target.value })} placeholder="¿Quién lo lleva?" /></Field>
+              </div>
+              <div className="grid gap-2 mt-2">
+                <Field label="Nombre del proyecto"><input className="input" value={tplDraft.proyecto} onChange={e => setTplDraft({ ...tplDraft, proyecto: e.target.value })} placeholder="Ej. Casa Pueblas, App CroKiss…" /></Field>
+              </div>
+              {selTpl && (
+                <div className="mt-3 form-derived">Se crearán <strong>{selTpl.tasks.length} tareas</strong>: {selTpl.tasks.map(it => it.actividad).join(" · ")}</div>
+              )}
+              <div className="mt-3 flex justify-end"><button onClick={createFromTemplate} className="yo-btn-primary"><Plus size={14}/>Crear proyecto</button></div>
+            </section>
+          );
+        })()}
 
         {/* VISTAS */}
         <main>
