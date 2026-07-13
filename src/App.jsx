@@ -16,7 +16,7 @@ import {
 // contención 2026-07-12). El acceso lo gobierna el Portero YOD: cada
 // petición viaja con su credencial (k) y el servidor la valida; este
 // código ya no contiene ningún secreto.
-const APPS_SCRIPT_URL = "";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZ1p7rGHuU01vWBbynGdmlKTnlyH9CIXyhKivqLHa4rLxcHNneJKsZHv7smnjLsfH1/exec";
 const PORTERO_LSK = "pyod_clave_v1";   // credencial que escribe portero.js
 function credencial() { try { return localStorage.getItem(PORTERO_LSK) || ""; } catch { return ""; } }
 function credencialRechazada() {
@@ -72,7 +72,6 @@ const ESTADO_SLUG = {
   "En standby": "en-standby",
   "Terminado": "terminado",
   // Aliases para compatibilidad con datos viejos
-  "En standby": "en-standby",
   "Subido": "en-standby",
   "Detenido": "en-standby",
 };
@@ -3568,4 +3567,3 @@ function AIChat({ tasks, projectsList, onClose }) {
 export default function App() {
   return <Board onLogout={() => credencialRechazada()} />;
 }
-
