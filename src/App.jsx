@@ -19,9 +19,29 @@ import {
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZ1p7rGHuU01vWBbynGdmlKTnlyH9CIXyhKivqLHa4rLxcHNneJKsZHv7smnjLsfH1/exec";
 const PORTERO_LSK = "pyod_clave_v1";   // credencial que escribe portero.js
 function credencial() { try { return localStorage.getItem(PORTERO_LSK) || ""; } catch { return ""; } }
-function credencialRechazada() {
+const PYOD_EXEC = "https://script.google.com/macros/s/AKfycbwlDDCWWzOWYZsUpBU9uqsQ7aenQ469PF6s6FkNlBFS1_cJSU5njG9oQmuyELy5zlqzFg/exec";
+function _pyodCerrar() {
   try { localStorage.removeItem(PORTERO_LSK); sessionStorage.removeItem("pyod_rol"); } catch {}
   window.location.reload();
+}
+function _pyodAviso() {
+  if (document.getElementById("pyodAviso")) return;
+  const d = document.createElement("div");
+  d.id = "pyodAviso";
+  d.style.cssText = "position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2147483000;max-width:min(560px,92vw);background:#221E17;color:#F1EDE3;border:1px solid rgba(255,255,255,.14);border-left:3px solid #B98B3C;border-radius:12px;padding:14px 16px;font-family:'Instrument Sans',system-ui,sans-serif;font-size:13px;line-height:1.5;box-shadow:0 18px 48px rgba(0,0,0,.5)";
+  d.innerHTML = '<b style="color:#B98B3C">Tu sesión es válida.</b> Este tablero no validó tu acceso: su backend (Apps Script) necesita re-desplegarse. Tu sesión NO se cerró. <a href="https://alexpueblag.github.io/yod-portal/os/" style="color:#B98B3C">Volver a YOD OS</a> · <button id="pyodAvX" style="background:none;border:0;color:#8A8272;cursor:pointer;text-decoration:underline;font:inherit">Ocultar</button>';
+  document.body.appendChild(d);
+  const x = document.getElementById("pyodAvX");
+  if (x) x.onclick = () => d.remove();
+}
+function credencialRechazada() {
+  let k = "";
+  try { k = localStorage.getItem(PORTERO_LSK) || ""; } catch {}
+  if (!k) { _pyodCerrar(); return; }
+  fetch(PYOD_EXEC + "?recurso=canje&t=" + encodeURIComponent(k), { credentials: "omit" })
+    .then((r) => r.json())
+    .then((j) => { if (j && j.ok) _pyodAviso(); else _pyodCerrar(); })
+    .catch(() => _pyodAviso());
 }
 
 const ASSETS = {
