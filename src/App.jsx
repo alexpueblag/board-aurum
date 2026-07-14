@@ -383,7 +383,7 @@ async function apiCall(action, payload = {}) {
   const body = JSON.stringify({ k: credencial(), action, ...payload });
   let res;
   try {
-    res = await fetch(APPS_SCRIPT_URL, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow" });
+    res = await fetch(APPS_SCRIPT_URL, { method: "POST", body, headers: { "Content-Type": "text/plain;charset=utf-8" }, redirect: "follow", credentials: "omit" });
   } catch (netErr) { throw new Error(`Red/CORS: ${netErr.message}`); }
   if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`); }
   const text = await res.text();
