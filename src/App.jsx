@@ -3337,6 +3337,29 @@ function GlobalStyles() {
       .diag-task-entregable { font-size: 0.7rem; color: #8A8272; margin-top: 0.2rem; font-style: italic; }
       .dark .diag-task-entregable { color: #8A8272; }
 
+      /* ============ CARA YOD OS · BASE CLARA (metamorfosis) ============ */
+      /* Reafirma superficies claras en modo por defecto; .dark (mayor
+         especificidad) sigue mandando en modo oscuro. Aditivo, no destructivo. */
+      .brand-shell, .login-gate { background: linear-gradient(rgba(35,29,20,.02) 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, rgba(35,29,20,.02) 1px, transparent 1px) 0 0 / 60px 60px, #f6f3ed; }
+      .yo-theme { color: #231d14; }
+      .yo-card, .yo-header, .persona-column, .proyecto-tile, .kanban-vertical .kanban-col, .kanban-card, .estado-col, .estado-card, .proj-row, .task-row, .brief, .calendar-view, .metric-card, .empresa-metric-block, .risk-card, .ms-toolbar, .ms-section, .timeline-view, .diag-box, .settings-box, .dash-box, .confirm-box, .trash-box { background: #ffffff; border-color: #e1dacb; color: #231d14; }
+      .yo-display, .persona-column-name, .proj-row-name, .kanban-card-title, .estado-card-title, .cal-title, .metric-value, .ms-h2 { color: #231d14; }
+      .input, .login-input { background: #ffffff; border-color: #e1dacb; color: #231d14; }
+      .yo-btn-secondary, .archive-toggle, .vs-btn, .cal-nav-btn { background: #ffffff; border-color: #e1dacb; color: #231d14; }
+      .vs-btn.on { background: rgba(154,123,63,.2); color: #5b4a24; }
+      .proyecto-tile-kanban, .proj-row-body, .persona-column-header, .cal-cell, .form-derived { background: #f1ede3; }
+      .form-derived, .ms-sub, .btn-ghost, .tl-month, .tl-row-pct, .tl-legend, .diag-task-entregable { color: #766f62; }
+      .cal-cell-empty { background: transparent; }
+      .yo-btn-primary { background: #9a7b3f; color: #17140F; }
+      .archive-toggle-cnt, .brief-lbl-cnt { background: #231d14; color: #f6f3ed; }
+      /* bordes y rellenos que asumían fondo oscuro */
+      .tl-axis-track { border-bottom-color: #e1dacb; }
+      .tl-row { border-bottom-color: #eee4d2; }
+      .tl-legend { border-top-color: #e1dacb; }
+      .tl-bar { background: rgba(35,29,20,.08); }
+      .tl-bar-fill { background: #9a7b3f; }
+      .tl-dot { border-color: #ffffff; }
+
     `}</style>
   );
 }
