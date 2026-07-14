@@ -1340,13 +1340,13 @@ function Board({ onLogout }) {
                 {archivedCount > 0 && <span className="archive-toggle-cnt">{archivedCount}</span>}
               </label>
               <button onClick={archiveAllDone} className="yo-btn-secondary" title="Archivar todas las terminadas"><Archive size={12}/>Limpiar</button>
-              <button onClick={() => setShowExport(true)} className="yo-btn-secondary" title="Exportar / imprimir"><Printer size={12}/></button>
-              <button onClick={() => setShowTrash(true)} className="yo-btn-secondary" title="Papelera" style={{ position: "relative" }}><Trash2 size={12}/>{trashedTasks.length > 0 && <span className="trash-cnt">{trashedTasks.length}</span>}</button>
-              <button onClick={() => setShowSettings(true)} className="yo-btn-secondary" title="Ajustes de colores"><Settings size={12}/></button>
-              <button onClick={() => { if (window.confirm("¿Cerrar sesión y volver a pedir la palabra?")) { onLogout && onLogout(); } }} className="yo-btn-secondary" title="Cerrar sesión"><LogOut size={12}/></button>
-              <button onClick={() => setShowAI(true)} className="yo-btn-secondary ai-trigger" title="Asistente IA"><Sparkles size={12}/></button>
-              <button onClick={() => setPresenting(true)} className="yo-btn-secondary" title="Modo presentación"><Play size={12}/></button>
-              <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="yo-btn-secondary" title="Tema claro/oscuro">{theme === "dark" ? <Sun size={12}/> : <Moon size={12}/>}</button>
+              <button onClick={() => setShowExport(true)} className="yo-btn-secondary icon-btn" title="Exportar / imprimir"><Printer size={12}/></button>
+              <button onClick={() => setShowTrash(true)} className="yo-btn-secondary icon-btn" title="Papelera" style={{ position: "relative" }}><Trash2 size={12}/>{trashedTasks.length > 0 && <span className="trash-cnt">{trashedTasks.length}</span>}</button>
+              <button onClick={() => setShowSettings(true)} className="yo-btn-secondary icon-btn" title="Ajustes de colores"><Settings size={12}/></button>
+              <button onClick={() => { if (window.confirm("¿Cerrar sesión y volver a pedir la palabra?")) { onLogout && onLogout(); } }} className="yo-btn-secondary icon-btn" title="Cerrar sesión"><LogOut size={12}/></button>
+              <button onClick={() => setShowAI(true)} className="yo-btn-secondary ai-trigger icon-btn" title="Asistente IA"><Sparkles size={12}/></button>
+              <button onClick={() => setPresenting(true)} className="yo-btn-secondary icon-btn" title="Modo presentación"><Play size={12}/></button>
+              <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="yo-btn-secondary icon-btn" title="Tema claro/oscuro">{theme === "dark" ? <Sun size={12}/> : <Moon size={12}/>}</button>
               <button onClick={loadFromRemote} className="yo-btn-secondary" disabled={syncing} title="Forzar lectura"><RefreshCw size={12}/>{syncing ? "…" : ""}</button>
               <button onClick={() => setShowTemplate(v => !v)} className="yo-btn-secondary" title="Crear proyecto desde plantilla"><LayoutGrid size={12}/>Plantilla</button>
               <button onClick={() => setShowForm(v => !v)} className="yo-btn-primary"><Plus size={14}/>Tarea</button>
@@ -1370,8 +1370,8 @@ function Board({ onLogout }) {
         {/* MÉTRICAS con toggle global/empresa */}
         <section className="mb-3">
           <div className="metrics-toolbar">
-            <button className={`mt-tab ${metricsMode === "global" ? "on" : ""}`} onClick={() => setMetricsMode("global")}>Global</button>
-            <button className={`mt-tab ${metricsMode === "empresa" ? "on" : ""}`} onClick={() => setMetricsMode("empresa")}>Por empresa</button>
+            <button className={`mt-tab ${metricsMode === "global" ? "on" : ""}`} onClick={() => setMetricsMode("global")}><BarChart3 size={12}/>Global</button>
+            <button className={`mt-tab ${metricsMode === "empresa" ? "on" : ""}`} onClick={() => setMetricsMode("empresa")}><Building2 size={12}/>Por empresa</button>
           </div>
           {metricsMode === "global" ? (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
@@ -1874,9 +1874,9 @@ function CalendarView({ tasks, cursor, setCursor, setSelectedTaskId, colorOverri
       <div className="cal-header">
         <div className="cal-title">{MESES[cursor.month]} {cursor.year}</div>
         <div className="cal-nav">
-          <button onClick={prevMonth} className="cal-nav-btn"><ChevronLeft size={14}/></button>
+          <button onClick={prevMonth} className="cal-nav-btn icon-btn"><ChevronLeft size={14}/></button>
           <button onClick={goToday} className="cal-today-btn">Hoy</button>
-          <button onClick={nextMonth} className="cal-nav-btn"><ChevronRight size={14}/></button>
+          <button onClick={nextMonth} className="cal-nav-btn icon-btn"><ChevronRight size={14}/></button>
         </div>
       </div>
       <div className="cal-weekdays">{DIAS_CORTO.map(d => <div key={d} className="cal-weekday">{d}</div>)}</div>
@@ -2592,11 +2592,10 @@ function GlobalStyles() {
       .panel-soft { background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.09); }
 
       /* View selector */
-      .view-selector { display: inline-flex; border: 1px solid rgba(255,255,255,.12); background: #221E17; }
-      .vs-btn { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.5rem 0.7rem; font-size: 0.72rem; font-weight: 600; color: #b6b3aa; background: transparent; border: none; border-right: 1px solid rgba(255,255,255,.12); cursor: pointer; }
-      .vs-btn:last-child { border-right: 0; }
-      .vs-btn:hover { background: rgba(255,255,255,.06); }
-      .vs-btn.on { background: #B98B3C; color: #17140F; }
+      .view-selector { display: inline-flex; gap: 3px; border: 1px solid rgba(255,255,255,.12); background: #221E17; }
+      .vs-btn { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.5rem 0.7rem; font-size: 0.72rem; font-weight: 600; color: #b6b3aa; background: transparent; border: none; border-radius: 9px; cursor: pointer; }
+      .vs-btn:hover { background: rgba(255,255,255,.07); }
+      .vs-btn.on { background: rgba(154,123,63,.2); color: #ead8b5; }
 
       /* Archive toggle + overdue counter + metrics toolbar */
       .archive-toggle { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.7rem; font-size: 0.72rem; font-weight: 600; border: 1px solid rgba(255,255,255,.12); background: #221E17; cursor: pointer; }
@@ -2606,8 +2605,8 @@ function GlobalStyles() {
       .overdue-counter { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.7rem; font-size: 0.72rem; font-weight: 700; background: rgba(224,96,90,.16); color: #E0605A; border: 1px solid rgba(224,96,90,.45); }
       .overdue-pill { display: inline-flex; align-items: center; gap: 0.2rem; background: rgba(224,96,90,.16); color: #E0605A; padding: 0.05rem 0.3rem; font-weight: 700; font-size: 0.6rem; }
       .metrics-toolbar { display: flex; gap: 0.3rem; margin-bottom: 0.5rem; }
-      .metrics-toolbar button { padding: 0.35rem 0.7rem; font-size: 0.72rem; font-weight: 600; border: 1px solid rgba(255,255,255,.12); background: #221E17; cursor: pointer; color: #b6b3aa; }
-      .metrics-toolbar button.on { background: #B98B3C; color: #17140F; }
+      .metrics-toolbar button { display: inline-flex; align-items: center; gap: .35rem; border-radius: 9px; padding: 0.35rem 0.7rem; font-size: 0.72rem; font-weight: 600; border: 1px solid rgba(255,255,255,.12); background: #221E17; cursor: pointer; color: #b6b3aa; }
+      .metrics-toolbar button.on { background: rgba(154,123,63,.2); color: #ead8b5; }
 
       /* Briefing */
       .brief { display: flex; gap: 1rem; align-items: stretch; background: #221E17; border: 1px solid rgba(255,255,255,.09); padding: 0.85rem 1rem; margin-bottom: 0.75rem; }
@@ -2967,7 +2966,7 @@ function GlobalStyles() {
       .dark .yo-display, .dark .persona-column-name, .dark .proj-row-name, .dark .kanban-card-title, .dark .estado-card-title, .dark .cal-title, .dark .metric-value { color: #F1EDE3; }
       .dark .input { background: #17140F; border-color: rgba(255,255,255,.09); color: #F1EDE3; }
       .dark .yo-btn-secondary, .dark .archive-toggle, .dark .vs-btn, .dark .cal-nav-btn { background: #221E17; border-color: rgba(255,255,255,.09); color: #F1EDE3; }
-      .vs-btn.on { background: #B98B3C; color: #17140F; }
+      .vs-btn.on { background: rgba(154,123,63,.2); color: #ead8b5; }
       .dark .proyecto-tile-kanban, .dark .proj-row-body, .dark .persona-column-header, .dark .cal-cell { background: #1C1811; }
       .dark .cal-cell-empty { background: transparent; }
       .dark .yo-btn-primary { background: #B98B3C; color: #17140F; }
@@ -3051,7 +3050,7 @@ function GlobalStyles() {
       /* ============================================================ */
       /* ===========   MEJORA ESTÉTICA v2 (refinamiento)  =========== */
       /* ============================================================ */
-      :root { --radius: 7px; --shadow-sm: 0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.06); --shadow-md: 0 4px 16px rgba(15,23,42,0.10); --accent: #B98B3C; --accent-2: #D8AE5E; }
+      :root { --radius: 7px; --shadow-sm: 0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.06); --shadow-md: 0 4px 16px rgba(15,23,42,0.10); --accent: #B98B3C; --accent-2: #D8AE5E; --line: rgba(255,255,255,.12); }
 
       .brand-shell { background: linear-gradient(rgba(255,255,255,.012) 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px) 0 0 / 60px 60px, #17140F; }
 
@@ -3065,11 +3064,13 @@ function GlobalStyles() {
       .yo-header { border-top: 3px solid var(--accent); }
 
       /* Botones más suaves */
-      .yo-btn-primary, .yo-btn-secondary, .yo-btn-danger { border-radius: 5px; transition: all .14s ease; }
+      .yo-btn-primary, .yo-btn-secondary, .yo-btn-danger { border-radius: 9px; transition: all .14s ease; }
       .yo-btn-primary:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
       .yo-btn-secondary:hover { border-color: #8A8272; }
-      .view-selector { border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-sm); }
-      .input { border-radius: 5px; transition: border-color .14s, box-shadow .14s; }
+      .view-selector { border-radius: 9px; box-shadow: var(--shadow-sm); }
+      .input { border-radius: 9px; transition: border-color .14s, box-shadow .14s; }
+      .icon-btn { width: 39px; height: 39px; padding: 0; display: grid; place-items: center; border-radius: 9px; border: 1px solid var(--line); }
+      .icon-btn:hover { border-color: var(--accent); }
       .input:focus { box-shadow: 0 0 0 3px rgba(201,169,110,0.12); border-color: var(--accent); }
 
       /* Hover de tarjetas: elevación más marcada y elegante */
