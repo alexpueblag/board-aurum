@@ -7,7 +7,7 @@ body {
   margin: 0;
   background: #0a0a0c;
   color: #f4f1ea;
-  font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+  font-family:'Instrument Sans',"Manrope", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
