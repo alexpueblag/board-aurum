@@ -21,7 +21,9 @@ const PORTERO_LSK = "pyod_clave_v1";   // credencial que escribe portero.js
 function credencial() { try { return localStorage.getItem(PORTERO_LSK) || ""; } catch { return ""; } }
 const PYOD_EXEC = "https://script.google.com/macros/s/AKfycbwlDDCWWzOWYZsUpBU9uqsQ7aenQ469PF6s6FkNlBFS1_cJSU5njG9oQmuyELy5zlqzFg/exec";
 function _pyodCerrar() {
-  try { localStorage.removeItem(PORTERO_LSK); sessionStorage.removeItem("pyod_rol"); } catch {}
+  // Sesión inválida → dispositivo limpio: fuera credencial Y fuera caché de tareas
+  // (el caché vive en el origen compartido; no debe sobrevivir a la sesión).
+  try { localStorage.removeItem(PORTERO_LSK); localStorage.removeItem("aurum-cache-v5"); sessionStorage.removeItem("pyod_rol"); } catch {}
   window.location.reload();
 }
 function _pyodAviso() {
