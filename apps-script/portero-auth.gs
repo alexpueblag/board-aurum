@@ -6,10 +6,17 @@
  * "Operación semanal" no cargaba el resumen. La sesión ES válida; lo que
  * fallaba era la validación de este backend.
  *
- * CAUSA: el backend pedía al Portero un canje CON `&board=TA`, que depende
- * del filtro por-board del lado del Portero. Aunque la persona sí tiene TA
- * en su lista de tableros (por eso el módulo aparece en YOD OS), ese canje
- * con board devolvía ok:false → error 'liga'.
+ * CAUSA REAL (confirmada 2026-07-15): el backend desplegado pedía el canje
+ * con `&board=BA`, pero el código de Operación en la matriz de Accesos es
+ * `TA` (no existe `BA`). Como nadie tiene `BA` en su lista `boards`, el
+ * Portero respondía "board no permitido" y el backend lo traducía a 'liga'.
+ * Los admin entraban (a ellos el Portero les abre todo); los colaboradores
+ * con TA no. Arreglo directo: `board=BA` → `board=TA`.
+ *
+ * Este archivo va más allá y valida SIN `&board=` (canje simple) revisando
+ * el código TA aquí, contra la lista `boards` que devuelve el Portero — la
+ * misma decisión que toma YOD OS para mostrar el módulo. Así, aunque alguien
+ * vuelva a teclear mal un código, la fuente de verdad es una sola.
  *
  * SOLUCIÓN: validar la sesión con un canje SIN board (el mismo que usa
  * YOD OS, que sí devuelve la lista `boards`) y revisar el código TA aquí,
