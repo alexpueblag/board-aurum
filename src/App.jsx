@@ -23,7 +23,13 @@ const PYOD_EXEC = "https://script.google.com/macros/s/AKfycbwlDDCWWzOWYZsUpBU9uq
 function _pyodCerrar() {
   // Sesión inválida → dispositivo limpio: fuera credencial Y fuera caché de tareas
   // (el caché vive en el origen compartido; no debe sobrevivir a la sesión).
+  // ANTI-BUCLE: recargar como máximo 1 vez por sesión. Si tras recargar el token nuevo también
+  // es rechazado, NO recargar otra vez (eso causaba el "salta entre pantallas y se congela").
+  let n = 0;
+  try { n = parseInt(sessionStorage.getItem("pyod_recargas") || "0", 10) || 0; } catch {}
   try { localStorage.removeItem(PORTERO_LSK); localStorage.removeItem("aurum-cache-v5"); sessionStorage.removeItem("pyod_rol"); } catch {}
+  if (n >= 1) return;   // ya recargamos una vez → cortar el bucle; el Portero mostrará su gate
+  try { sessionStorage.setItem("pyod_recargas", String(n + 1)); } catch {}
   window.location.reload();
 }
 function _pyodAviso() {
@@ -39,7 +45,7 @@ function _pyodAviso() {
 function credencialRechazada() {
   let k = "";
   try { k = localStorage.getItem(PORTERO_LSK) || ""; } catch {}
-  if (!k) { _pyodCerrar(); return; }
+  if (!k) return;   // sin token → esperar el gate del Portero; NUNCA recargar (esto causaba el bucle sin sesión)
   fetch(PYOD_EXEC + "?recurso=canje&t=" + encodeURIComponent(k), { credentials: "omit" })
     .then((r) => r.json())
     .then((j) => { if (j && j.ok) _pyodAviso(); else _pyodCerrar(); })
@@ -778,6 +784,7 @@ function Board({ onLogout }) {
         });
         setTasks(merged); setLastSync(new Date());
         try { localStorage.setItem(CACHE_KEY, JSON.stringify(merged)); } catch {}
+        try { sessionStorage.removeItem("pyod_recargas"); } catch {}  // carga OK → reinicia el anti-bucle
       }
     } catch (err) { setSyncError(err.message); }
     finally { setSyncing(false); }
