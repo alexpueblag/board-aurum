@@ -11,3 +11,21 @@ body {
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ===== Quick wins UX (enjambre 15-jul): foco, táctil 44px, 16px móvil ===== */
+/* Foco de teclado visible en todo control (antes solo inputs) */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [role="button"]:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid #b98b3c; outline-offset: 2px; border-radius: 8px;
+}
+/* En móvil, campos a 16px: evita el auto-zoom de Safari iOS */
+@media (max-width: 700px) {
+  input, select, textarea, .input { font-size: 16px; }
+}
+/* Objetivos táctiles mínimos con el dedo (sin agrandar el dibujo del ícono) */
+@media (pointer: coarse) {
+  .icon-btn { min-width: 44px; min-height: 44px; }
+  .quick-archive { min-width: 36px; min-height: 36px; }
+  .yo-btn-primary, .yo-btn-secondary, .yo-btn-danger { min-height: 44px; }
+  select, .input { min-height: 44px; }
+}

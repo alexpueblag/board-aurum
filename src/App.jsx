@@ -708,7 +708,12 @@ function Board({ onLogout }) {
   const [confirmDialog, setConfirmDialog] = useState({ open: false });
 
   // Estados de UI
-  const [currentView, setCurrentView] = useState("personas"); // personas | proyectos | estados | calendario
+  // Colaboradores arrancan en "Mi semana" (lo más accionable para ellos); Dirección
+  // y quien no tenga rol cacheado, en "Personas" (comportamiento previo — sin regresión).
+  const [currentView, setCurrentView] = useState(() => {
+    try { const c = JSON.parse(sessionStorage.getItem("pyod_rol") || "null"); if (c && c.rol && c.rol !== "admin") return "misemana"; } catch {}
+    return "personas";
+  }); // personas | proyectos | estados | calendario | timeline | misemana
   const [showArchived, setShowArchived] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [presenting, setPresenting] = useState(false);
@@ -3322,7 +3327,8 @@ function GlobalStyles() {
         .brief-stats { justify-content: space-between; gap: 0.5rem; }
         .brief-stat { min-width: 0; flex: 1; }
         /* Pestañas deslizables horizontalmente (swipe) */
-        .view-selector { display: flex; width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        /* la máscara desvanece el borde derecho: insinúa que hay más pestañas al deslizar */
+        .view-selector { display: flex; width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
         .view-selector::-webkit-scrollbar { display: none; }
         .vs-btn { flex: 0 0 auto; white-space: nowrap; padding: 0.55rem 0.75rem; }
       }
