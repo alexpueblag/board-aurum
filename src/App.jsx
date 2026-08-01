@@ -1690,9 +1690,10 @@ function DecisionCenter({ tasks, addComentario, updateTaskField }) {
     const db = diasEsperando(parseDecision(b.observaciones).meta) || 0;
     return db - da;
   });
-  if (!pendientes.length) return null;
-  const zoomTask = zoomId ? pendientes.find(t => t.id === zoomId) : null;
-  const porDecidir = pendientes.filter(t => !decisionPendiente(t).decidida).length;
+  const porResolver = pendientes.filter(t => !decisionPendiente(t).decidida);
+  const porDecidir = porResolver.length;
+  if (!porDecidir) return null;
+  const zoomTask = zoomId ? porResolver.find(t => t.id === zoomId) : null;
 
   function checkRapido(t, opcionA) {
     addComentario(t.id, "Alejandro", `✅ DECISIÓN: Opción A — ${opcionA.texto} (aceptada rápida desde el post-it)`);
@@ -1709,16 +1710,16 @@ function DecisionCenter({ tasks, addComentario, updateTaskField }) {
       {!abierto && (
         <button onClick={() => setAbierto(true)}
           style={{ position: "sticky", top: 8, zIndex: 500, display: "block", margin: "0 0 0.8rem auto", background: "#f6e7a9", color: "#3a3115", border: "none", padding: "0.45rem 0.9rem", fontWeight: 800, fontSize: "0.78rem", cursor: "pointer", transform: "rotate(-1.2deg)", boxShadow: "0 6px 14px rgba(0,0,0,0.4)" }}>
-          🗒 {porDecidir || pendientes.length} decisión{(porDecidir || pendientes.length) === 1 ? "" : "es"} esperándote
+          🗒 {porDecidir} decisión{porDecidir === 1 ? "" : "es"} esperándote
         </button>
       )}
       {abierto && (
         <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(6,6,8,0.82)", backdropFilter: "blur(4px)", overflowY: "auto", padding: "5vh 20px 40px" }}>
           <div style={{ maxWidth: 860, margin: "0 auto", textAlign: "center" }}>
             <p style={{ fontFamily: "'Instrument Serif', serif", fontStyle: "italic", color: "#f6e7a9", fontSize: "1.65rem", margin: 0 }}>Antes de todo, Alejandro:</p>
-            <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.85rem", margin: "0.3rem 0 1.6rem" }}>{porDecidir === 0 ? "todo decidido — YodBot está ejecutando" : `${porDecidir} decisión${porDecidir === 1 ? "" : "es"} tuya${porDecidir === 1 ? "" : "s"} detiene${porDecidir === 1 ? "" : "n"} al equipo · un ✓ acepta la recomendada, tócalo para verlo de cerca`}</p>
+            <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.85rem", margin: "0.3rem 0 1.6rem" }}>{`${porDecidir} decisión${porDecidir === 1 ? "" : "es"} tuya${porDecidir === 1 ? "" : "s"} detiene${porDecidir === 1 ? "" : "n"} al equipo · un ✓ acepta la recomendada, tócalo para verlo de cerca`}</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 26, justifyContent: "center", alignItems: "stretch" }}>
-              {pendientes.map((t, i) => <PostIt key={t.id} t={t} i={i} onAbrir={setZoomId} onCheckRapido={checkRapido} />)}
+              {porResolver.map((t, i) => <PostIt key={t.id} t={t} i={i} onAbrir={setZoomId} onCheckRapido={checkRapido} />)}
             </div>
             <button onClick={masTarde} style={{ marginTop: "2rem", background: "transparent", color: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 999, padding: "0.45rem 1.1rem", fontSize: "0.78rem", cursor: "pointer" }}>Los veo al rato → entrar al board</button>
           </div>
