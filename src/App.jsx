@@ -1570,7 +1570,7 @@ function tituloCorto(actividad) {
 function decisionPendiente(t) {
   const cs = parseComentarios(t.comentarios);
   const iD = cs.map(c => c.texto.startsWith("✅ DECISIÓN")).lastIndexOf(true);
-  const iE = cs.map(c => c.autor.includes("YodBot") && c.texto.startsWith("🤖 Ejecutado")).lastIndexOf(true);
+  const iE = cs.map(c => c.texto.startsWith("🤖 Ejecutado")).lastIndexOf(true);
   return { decidida: iD >= 0, enEjecucion: iD >= 0 && iE < iD };
 }
 
