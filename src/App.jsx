@@ -1493,8 +1493,8 @@ function Board({ onLogout }) {
           );
         })()}
 
-        {/* CENTRO DE DECISIÓN — arriba de cualquier vista, solo Dirección */}
-        <DecisionCenter tasks={tasks} addComentario={addComentario} updateTaskField={updateTaskField} setSelectedTaskId={setSelectedTaskId} />
+        {/* CENTRO DE DECISIÓN — post-its al entrar, solo Dirección */}
+        <DecisionCenter tasks={tasks} addComentario={addComentario} updateTaskField={updateTaskField} />
 
         {/* VISTAS */}
         <main>
@@ -1549,95 +1549,183 @@ function Board({ onLogout }) {
 // ===================================================================
 function parseDecision(obs) {
   const lineas = String(obs || "").split(/\n/);
-  const opciones = [], contexto = [];
+  const opciones = [], contexto = [], meta = {};
   for (const ln of lineas) {
-    const m = ln.match(/^\s*([A-E])\)\s*(.+)$/);
-    if (m) opciones.push({ key: m[1], texto: m[2].trim() });
+    const o = ln.match(/^\s*([A-E])\)\s*(.+)$/);
+    const m = ln.match(/^\s*(DESDE|QUIEN|QUIÉN|PORQUE|PORQUÉ|RIESGO|PREGUNTA):\s*(.+)$/i);
+    if (o) opciones.push({ key: o[1], texto: o[2].trim() });
+    else if (m) meta[m[1].toUpperCase().replace("É", "E").replace("Í", "I")] = m[2].trim();
     else if (ln.trim()) contexto.push(ln.trim());
   }
-  return { contexto: contexto.join(" · "), opciones };
+  return { contexto: contexto.join(" "), opciones, meta };
+}
+function diasEsperando(meta) {
+  if (!meta.DESDE || !/^\d{4}-\d{2}-\d{2}$/.test(meta.DESDE)) return null;
+  const d = Math.floor((Date.now() - new Date(meta.DESDE + "T12:00:00")) / 86400000);
+  return d > 0 ? d : null;
+}
+function tituloCorto(actividad) {
+  return String(actividad || "").replace(/^D-\d+\s*·\s*/, "");
+}
+function decisionPendiente(t) {
+  const cs = parseComentarios(t.comentarios);
+  const iD = cs.map(c => c.texto.startsWith("✅ DECISIÓN")).lastIndexOf(true);
+  const iE = cs.map(c => c.autor.includes("YodBot") && c.texto.startsWith("🤖 Ejecutado")).lastIndexOf(true);
+  return { decidida: iD >= 0, enEjecucion: iD >= 0 && iE < iD };
 }
 
-function DecisionCard({ t, addComentario, updateTaskField, setSelectedTaskId }) {
-  const { contexto, opciones } = parseDecision(t.observaciones);
-  const [sel, setSel] = useState("");
-  const [detalle, setDetalle] = useState("");
-  const comentarios = parseComentarios(t.comentarios);
-  const iDecision = comentarios.map(c => c.texto.startsWith("✅ DECISIÓN")).lastIndexOf(true);
-  const iEjecucion = comentarios.map(c => c.autor.includes("YodBot") && c.texto.startsWith("🤖 Ejecutado")).lastIndexOf(true);
-  const enEjecucion = iDecision >= 0 && iEjecucion < iDecision;
-  const dias = (() => {
-    const m = String(t.observaciones || "").match(/DESDE:\s*(\d{4}-\d{2}-\d{2})/);
-    if (!m) return null;
-    const d = Math.floor((Date.now() - new Date(m[1] + "T12:00:00")) / 86400000);
-    return d > 0 ? d : null;
-  })();
+const POSTIT_COLORES = ["#f6e7a9", "#f9d9a7", "#eadfa0", "#f6cfa0", "#efe3b4"];
+const POSTIT_GIROS = [-2.2, 1.6, -1.1, 2.4, -1.8, 1.2];
 
-  function decidir(cerrar) {
-    const eleccion = cerrar ? "CERRAR sin acción" : (sel ? `Opción ${sel} — ${opciones.find(o => o.key === sel)?.texto || ""}` : "Otra");
-    if (!cerrar && !sel && !detalle.trim()) { alert("Elige una opción o escribe tu decisión."); return; }
-    addComentario(t.id, "Alejandro", `✅ DECISIÓN: ${eleccion}${detalle.trim() ? " — " + detalle.trim() : ""}`);
-    updateTaskField(t.id, { estado: "En proceso" }, true);
-    setSel(""); setDetalle("");
-  }
-
+function PostIt({ t, i, onAbrir, onCheckRapido }) {
+  const { contexto, opciones, meta } = parseDecision(t.observaciones);
+  const dias = diasEsperando(meta);
+  const { enEjecucion } = decisionPendiente(t);
+  const gist = contexto.length > 110 ? contexto.slice(0, 110) + "…" : contexto;
   return (
-    <div style={{ background: "rgba(212,175,55,0.05)", border: "1px solid rgba(212,175,55,0.35)", borderRadius: 14, padding: "0.9rem 1.1rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-        <button onClick={() => setSelectedTaskId(t.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit", fontWeight: 700, fontSize: "0.95rem" }}>{t.actividad}</button>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {dias != null && <span style={{ fontSize: "0.68rem", color: "#e07b54", fontWeight: 700 }}>lleva {dias} día{dias === 1 ? "" : "s"}</span>}
-          {enEjecucion && <span style={{ fontSize: "0.68rem", color: "#d4af37", fontWeight: 700 }}>decidida · en ejecución</span>}
-        </div>
+    <div onClick={() => onAbrir(t.id)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === "Enter") onAbrir(t.id); }}
+      style={{ background: POSTIT_COLORES[i % POSTIT_COLORES.length], color: "#3a3115", width: 235, minHeight: 200, padding: "1rem 1rem 0.8rem", cursor: "pointer", transform: `rotate(${POSTIT_GIROS[i % POSTIT_GIROS.length]}deg)`, boxShadow: "0 10px 22px rgba(0,0,0,0.45), 0 2px 5px rgba(0,0,0,0.3)", transition: "transform .18s ease, box-shadow .18s ease", display: "flex", flexDirection: "column", gap: 6 }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "rotate(0deg) scale(1.05)"; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = `rotate(${POSTIT_GIROS[i % POSTIT_GIROS.length]}deg)`; }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
+        {dias != null
+          ? <span style={{ fontSize: "0.66rem", fontWeight: 800, background: dias >= 7 ? "#b3402a" : "#8a6d1f", color: "#fff", padding: "2px 8px", borderRadius: 999 }}>esperando {dias} día{dias === 1 ? "" : "s"}</span>
+          : <span />}
+        {!enEjecucion && opciones.length > 0 && (
+          <button title={`Aceptar de una vez la opción A: ${opciones[0].texto}`}
+            onClick={e => { e.stopPropagation(); onCheckRapido(t, opciones[0]); }}
+            style={{ width: 30, height: 30, borderRadius: "50%", border: "2px solid #3a3115", background: "transparent", color: "#3a3115", fontWeight: 900, fontSize: "0.95rem", cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>✓</button>
+        )}
+        {enEjecucion && <span style={{ fontSize: "0.64rem", fontWeight: 800, color: "#5d6b2f" }}>✓ decidida · YodBot ejecuta</span>}
       </div>
-      {contexto && <p className="subtle" style={{ fontSize: "0.8rem", margin: "0.35rem 0 0" }}>{contexto.replace(/DESDE:\s*\d{4}-\d{2}-\d{2}\s*·?\s*/, "")}</p>}
-      {(t.links || []).length > 0 && (
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "0.45rem 0 0" }}>
-          {t.links.map(l => <a key={l.id || l.url} href={l.url} target="_blank" rel="noreferrer" style={{ fontSize: "0.74rem", color: "#d4af37", textDecoration: "underline" }}>{l.label || l.url}</a>)}
-        </div>
-      )}
-      {!enEjecucion && (
-        <>
-          {opciones.length > 0 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "0.6rem 0 0" }}>
-              {opciones.map(o => (
-                <button key={o.key} onClick={() => setSel(sel === o.key ? "" : o.key)}
-                  style={{ fontSize: "0.76rem", padding: "0.35rem 0.6rem", borderRadius: 8, cursor: "pointer", textAlign: "left", maxWidth: "100%", border: sel === o.key ? "1px solid #d4af37" : "1px solid rgba(255,255,255,0.15)", background: sel === o.key ? "rgba(212,175,55,0.18)" : "transparent", color: "inherit" }}>
-                  <strong>{o.key})</strong> {o.texto}
-                </button>
-              ))}
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 6, margin: "0.55rem 0 0", flexWrap: "wrap" }}>
-            <input className="input" value={detalle} onChange={e => setDetalle(e.target.value)} placeholder="Detalle o instrucción propia (opcional)…" style={{ flex: "1 1 220px", fontSize: "0.8rem" }} />
-            <button onClick={() => decidir(false)} className="yo-btn-primary" style={{ whiteSpace: "nowrap" }}>Adelante</button>
-            <button onClick={() => decidir(true)} style={{ fontSize: "0.76rem", padding: "0.35rem 0.6rem", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "inherit", cursor: "pointer" }}>Cerrar sin acción</button>
-          </div>
-        </>
-      )}
+      <p style={{ fontFamily: "'Instrument Serif', serif", fontStyle: "italic", fontSize: "1.06rem", lineHeight: 1.18, margin: 0, fontWeight: 400 }}>{tituloCorto(t.actividad)}</p>
+      {gist && <p style={{ fontSize: "0.73rem", lineHeight: 1.35, margin: 0, opacity: 0.85 }}>{gist}</p>}
+      <p style={{ fontSize: "0.66rem", margin: "auto 0 0", opacity: 0.6 }}>toca para acercarlo · ✓ acepta la opción recomendada</p>
     </div>
   );
 }
 
-function DecisionCenter({ tasks, addComentario, updateTaskField, setSelectedTaskId }) {
+function PostItDetalle({ t, addComentario, updateTaskField, onCerrar }) {
+  const { contexto, opciones, meta } = parseDecision(t.observaciones);
+  const dias = diasEsperando(meta);
+  const { enEjecucion } = decisionPendiente(t);
+  const [sel, setSel] = useState(opciones.length ? opciones[0].key : "");
+  const [detalle, setDetalle] = useState("");
+
+  function decidir(cerrarSinAccion) {
+    const op = opciones.find(o => o.key === sel);
+    const eleccion = cerrarSinAccion ? "CERRAR sin acción" : (op ? `Opción ${op.key} — ${op.texto}` : "Otra");
+    if (!cerrarSinAccion && !op && !detalle.trim()) { alert("Elige una opción o escribe tu decisión."); return; }
+    addComentario(t.id, "Alejandro", `✅ DECISIÓN: ${eleccion}${detalle.trim() ? " — " + detalle.trim() : ""}`);
+    updateTaskField(t.id, { estado: "En proceso" }, true);
+    onCerrar();
+  }
+
+  const fila = (etiqueta, valor) => valor ? (
+    <div style={{ display: "flex", gap: 8, fontSize: "0.82rem", lineHeight: 1.4 }}>
+      <span style={{ fontWeight: 800, minWidth: 118, opacity: 0.65 }}>{etiqueta}</span>
+      <span>{valor}</span>
+    </div>
+  ) : null;
+
+  return (
+    <div onClick={onCerrar} style={{ position: "fixed", inset: 0, zIndex: 10001, background: "rgba(6,6,8,0.72)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#f6e7a9", color: "#3a3115", width: "min(560px, 94vw)", maxHeight: "88vh", overflowY: "auto", padding: "1.6rem 1.7rem", boxShadow: "0 30px 70px rgba(0,0,0,0.6)", transform: "rotate(-0.4deg)", animation: "pyodPostitZoom .18s ease-out" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+          <p style={{ fontFamily: "'Instrument Serif', serif", fontStyle: "italic", fontSize: "1.5rem", lineHeight: 1.15, margin: 0 }}>{tituloCorto(t.actividad)}</p>
+          <button onClick={onCerrar} aria-label="Cerrar" style={{ border: "none", background: "transparent", color: "#3a3115", fontSize: "1.3rem", cursor: "pointer", lineHeight: 1 }}>×</button>
+        </div>
+        {dias != null && <p style={{ fontSize: "0.72rem", fontWeight: 800, color: dias >= 7 ? "#b3402a" : "#8a6d1f", margin: "0.3rem 0 0" }}>Esperando tu decisión desde hace {dias} día{dias === 1 ? "" : "s"} ({meta.DESDE})</p>}
+        <div style={{ display: "grid", gap: 6, margin: "0.9rem 0 0" }}>
+          {fila("El problema", contexto)}
+          {fila("Quién lo trae", meta.QUIEN)}
+          {fila("Quién pregunta", meta.PREGUNTA)}
+          {fila("Por qué importa", meta.PORQUE)}
+          {fila("Si no se decide", meta.RIESGO)}
+        </div>
+        {(t.links || []).length > 0 && (
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "0.7rem 0 0" }}>
+            {t.links.map(l => <a key={l.id || l.url} href={l.url} target="_blank" rel="noreferrer" style={{ fontSize: "0.78rem", color: "#7a5c10", fontWeight: 700, textDecoration: "underline" }}>{l.label || l.url}</a>)}
+          </div>
+        )}
+        {enEjecucion ? (
+          <p style={{ fontSize: "0.85rem", fontWeight: 800, color: "#5d6b2f", margin: "1rem 0 0" }}>✓ Ya decidiste; YodBot lo está ejecutando (revisa el comentario 🤖 en la tarjeta).</p>
+        ) : (
+          <>
+            {opciones.length > 0 && (
+              <div style={{ display: "grid", gap: 6, margin: "1rem 0 0" }}>
+                {opciones.map((o, idx) => (
+                  <button key={o.key} onClick={() => setSel(sel === o.key ? "" : o.key)}
+                    style={{ textAlign: "left", fontSize: "0.84rem", lineHeight: 1.35, padding: "0.5rem 0.7rem", borderRadius: 4, cursor: "pointer", border: sel === o.key ? "2px solid #3a3115" : "1px dashed rgba(58,49,21,0.45)", background: sel === o.key ? "rgba(58,49,21,0.1)" : "transparent", color: "inherit", fontFamily: "inherit" }}>
+                    <strong>{o.key})</strong> {o.texto}{idx === 0 ? "  ·  (recomendada)" : ""}
+                  </button>
+                ))}
+              </div>
+            )}
+            <textarea value={detalle} onChange={e => setDetalle(e.target.value)} placeholder="¿Quieres decirlo con tus palabras o dar más detalle? Escríbelo aquí…"
+              style={{ width: "100%", minHeight: 64, margin: "0.7rem 0 0", padding: "0.55rem 0.7rem", fontSize: "0.84rem", fontFamily: "inherit", color: "#3a3115", background: "rgba(255,255,255,0.5)", border: "1px solid rgba(58,49,21,0.35)", borderRadius: 4, resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8, margin: "0.8rem 0 0", flexWrap: "wrap" }}>
+              <button onClick={() => decidir(false)} style={{ flex: 1, minWidth: 150, padding: "0.6rem 1rem", fontSize: "0.9rem", fontWeight: 800, background: "#3a3115", color: "#f6e7a9", border: "none", borderRadius: 6, cursor: "pointer" }}>Adelante ✓</button>
+              <button onClick={() => decidir(true)} style={{ padding: "0.6rem 0.9rem", fontSize: "0.8rem", fontWeight: 700, background: "transparent", color: "#3a3115", border: "1px solid rgba(58,49,21,0.5)", borderRadius: 6, cursor: "pointer" }}>Cerrar sin acción</button>
+            </div>
+            <p style={{ fontSize: "0.68rem", opacity: 0.6, margin: "0.6rem 0 0" }}>Al darle Adelante, YodBot lo ejecuta en menos de una hora: crea tareas, delega o cierra, y te deja la constancia en la tarjeta.</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DecisionCenter({ tasks, addComentario, updateTaskField }) {
   let rol = null;
   try { rol = JSON.parse(sessionStorage.getItem("pyod_rol") || "null")?.rol || null; } catch {}
-  if (rol && rol !== "admin") return null;
+  const [abierto, setAbierto] = useState(() => { try { return !sessionStorage.getItem("pyod_dec_luego"); } catch { return true; } });
+  const [zoomId, setZoomId] = useState(null);
+  if (rol !== "admin") return null;
   const pendientes = tasks.filter(t =>
     String(t.proyecto || "").trim().toLowerCase() === "decisiones" &&
     normalizeEstado(t.estado) !== "Terminado" && !t.archivada && !t.borrada
-  ).sort((a, b) => String(a.fecha || "9999").localeCompare(String(b.fecha || "9999")));
+  ).sort((a, b) => {
+    const da = diasEsperando(parseDecision(a.observaciones).meta) || 0;
+    const db = diasEsperando(parseDecision(b.observaciones).meta) || 0;
+    return db - da;
+  });
   if (!pendientes.length) return null;
+  const zoomTask = zoomId ? pendientes.find(t => t.id === zoomId) : null;
+  const porDecidir = pendientes.filter(t => !decisionPendiente(t).decidida).length;
+
+  function checkRapido(t, opcionA) {
+    addComentario(t.id, "Alejandro", `✅ DECISIÓN: Opción A — ${opcionA.texto} (aceptada rápida desde el post-it)`);
+    updateTaskField(t.id, { estado: "En proceso" }, true);
+  }
+  function masTarde() {
+    try { sessionStorage.setItem("pyod_dec_luego", "1"); } catch {}
+    setAbierto(false);
+  }
+
   return (
-    <section style={{ margin: "0 0 1.2rem" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: "0.6rem" }}>
-        <h2 style={{ fontSize: "1.02rem", fontWeight: 800, margin: 0, color: "#d4af37" }}>Para decidir hoy</h2>
-        <span className="subtle" style={{ fontSize: "0.74rem" }}>{pendientes.length} pendiente{pendientes.length === 1 ? "" : "s"} · tu clic aquí dispara la ejecución con YodBot</span>
-      </div>
-      <div style={{ display: "grid", gap: 10 }}>
-        {pendientes.map(t => <DecisionCard key={t.id} t={t} addComentario={addComentario} updateTaskField={updateTaskField} setSelectedTaskId={setSelectedTaskId} />)}
-      </div>
-    </section>
+    <>
+      <style>{`@keyframes pyodPostitZoom { from { transform: rotate(-0.4deg) scale(0.82); opacity: 0.4; } to { transform: rotate(-0.4deg) scale(1); opacity: 1; } }`}</style>
+      {!abierto && (
+        <button onClick={() => setAbierto(true)}
+          style={{ position: "sticky", top: 8, zIndex: 500, display: "block", margin: "0 0 0.8rem auto", background: "#f6e7a9", color: "#3a3115", border: "none", padding: "0.45rem 0.9rem", fontWeight: 800, fontSize: "0.78rem", cursor: "pointer", transform: "rotate(-1.2deg)", boxShadow: "0 6px 14px rgba(0,0,0,0.4)" }}>
+          🗒 {porDecidir || pendientes.length} decisión{(porDecidir || pendientes.length) === 1 ? "" : "es"} esperándote
+        </button>
+      )}
+      {abierto && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(6,6,8,0.82)", backdropFilter: "blur(4px)", overflowY: "auto", padding: "5vh 20px 40px" }}>
+          <div style={{ maxWidth: 860, margin: "0 auto", textAlign: "center" }}>
+            <p style={{ fontFamily: "'Instrument Serif', serif", fontStyle: "italic", color: "#f6e7a9", fontSize: "1.65rem", margin: 0 }}>Antes de todo, Alejandro:</p>
+            <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.85rem", margin: "0.3rem 0 1.6rem" }}>{porDecidir === 0 ? "todo decidido — YodBot está ejecutando" : `${porDecidir} decisión${porDecidir === 1 ? "" : "es"} tuya${porDecidir === 1 ? "" : "s"} detiene${porDecidir === 1 ? "" : "n"} al equipo · un ✓ acepta la recomendada, tócalo para verlo de cerca`}</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 26, justifyContent: "center", alignItems: "stretch" }}>
+              {pendientes.map((t, i) => <PostIt key={t.id} t={t} i={i} onAbrir={setZoomId} onCheckRapido={checkRapido} />)}
+            </div>
+            <button onClick={masTarde} style={{ marginTop: "2rem", background: "transparent", color: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 999, padding: "0.45rem 1.1rem", fontSize: "0.78rem", cursor: "pointer" }}>Los veo al rato → entrar al board</button>
+          </div>
+        </div>
+      )}
+      {zoomTask && <PostItDetalle t={zoomTask} addComentario={addComentario} updateTaskField={updateTaskField} onCerrar={() => setZoomId(null)} />}
+    </>
   );
 }
 
