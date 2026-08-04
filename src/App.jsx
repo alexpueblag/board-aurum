@@ -16,7 +16,15 @@ import {
 // contención 2026-07-12). El acceso lo gobierna el Portero YOD: cada
 // petición viaja con su credencial (k) y el servidor la valida; este
 // código ya no contiene ningún secreto.
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZ1p7rGHuU01vWBbynGdmlKTnlyH9CIXyhKivqLHa4rLxcHNneJKsZHv7smnjLsfH1/exec";
+/* BACKEND PARALELO (ago-2026): la suscripción Workspace de aurumarquitectos.com
+   está suspendida y Google bloquea TODA escritura a los Apps Script del dominio,
+   así que el board quedó sin guardar. Este backend vive en una cuenta Gmail
+   personal (fuera del dominio) y habla el mismo contrato; la sesión se sigue
+   validando con el Portero de siempre, así que nadie necesita clave nueva.
+   PARA REVERTIR al reactivar el dominio: volver a
+   AKfycbyZ1p7rGHuU01vWBbynGdmlKTnlyH9CIXyhKivqLHa4rLxcHNneJKsZHv7smnjLsfH1
+   y volcar la hoja Tareas del Sheet paralelo al Sheet original. */
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz9SgSbB7igHB6y8-wZmvnZcahxvRyhin2QB8g57IoVwhypnBzEmGxMtNNQVRVn7H4/exec";
 const PORTERO_LSK = "pyod_clave_v1";   // credencial que escribe portero.js
 function credencial() { try { return localStorage.getItem(PORTERO_LSK) || ""; } catch { return ""; } }
 const PYOD_EXEC = "https://script.google.com/macros/s/AKfycbwlDDCWWzOWYZsUpBU9uqsQ7aenQ469PF6s6FkNlBFS1_cJSU5njG9oQmuyELy5zlqzFg/exec";
