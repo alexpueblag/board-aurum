@@ -1677,8 +1677,17 @@ function PostItDetalle({ t, addComentario, updateTaskField, onCerrar }) {
 }
 
 function DecisionCenter({ tasks, addComentario, updateTaskField }) {
-  let rol = null;
-  try { rol = JSON.parse(sessionStorage.getItem("pyod_rol") || "null")?.rol || null; } catch {}
+  // El rol lo escribe portero.js en sessionStorage DESPUÉS del primer render
+  // (canje asíncrono). Leerlo una sola vez perdía la carrera y la pantalla no
+  // salía en pestañas nuevas: ahora se re-lee hasta que aparezca (máx 30 s).
+  const leerRol = () => { try { return JSON.parse(sessionStorage.getItem("pyod_rol") || "null")?.rol || null; } catch { return null; } };
+  const [rol, setRol] = useState(leerRol);
+  useEffect(() => {
+    if (rol) return;
+    let n = 0;
+    const id = setInterval(() => { const r = leerRol(); if (r) { setRol(r); clearInterval(id); } else if (++n > 30) clearInterval(id); }, 1000);
+    return () => clearInterval(id);
+  }, [rol]);
   const [abierto, setAbierto] = useState(() => { try { return !sessionStorage.getItem("pyod_dec_luego"); } catch { return true; } });
   const [zoomId, setZoomId] = useState(null);
   if (rol !== "admin") return null;
@@ -1692,7 +1701,18 @@ function DecisionCenter({ tasks, addComentario, updateTaskField }) {
   });
   const porResolver = pendientes.filter(t => !decisionPendiente(t).decidida);
   const porDecidir = porResolver.length;
-  if (!porDecidir) return null;
+  const enEjecucionCount = pendientes.filter(t => { const d = decisionPendiente(t); return d.decidida && d.enEjecucion; }).length;
+  if (!porDecidir) {
+    // Ancla de la costumbre diaria: aun sin pendientes, confirma que el radar
+    // corrió y qué está ejecutando YodBot — el silencio no informa.
+    return (
+      <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 0 0.8rem" }}>
+        <span style={{ background: "rgba(125,155,90,0.14)", color: "#9db87a", border: "1px solid rgba(125,155,90,0.35)", borderRadius: 999, padding: "0.35rem 0.9rem", fontWeight: 700, fontSize: "0.74rem" }}>
+          🗒 Centro de Decisión: sin pendientes hoy{enEjecucionCount ? ` · YodBot ejecuta ${enEjecucionCount}` : ""}
+        </span>
+      </div>
+    );
+  }
   const zoomTask = zoomId ? porResolver.find(t => t.id === zoomId) : null;
 
   function checkRapido(t, opcionA) {
