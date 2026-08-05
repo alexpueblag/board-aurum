@@ -97,7 +97,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const SHEET_FIELDS = ["mes", "empresa", "proyecto", "responsable", "semana", "actividad", "entregable", "fecha", "estado", "observaciones", "prioridad", "archivada", "fechaTerminado", "color", "historial", "subtareas", "comentarios", "borrada"];
+const SHEET_FIELDS = ["mes", "anio", "empresa", "proyecto", "responsable", "semana", "actividad", "entregable", "fecha", "estado", "observaciones", "prioridad", "archivada", "fechaTerminado", "color", "historial", "subtareas", "comentarios", "borrada"];
 const FIELD_TO_SHEET = { mesCompromiso: "mes" };
 
 // Estados — "Subido"/"En standby" ahora se normalizan a "En standby"
@@ -236,7 +236,7 @@ function commitmentDate(t) {
   const d = getDayNumber(t.fecha);
   const m = MONTH_INDEX[t.mesCompromiso || t.mes];
   if (d == null || m == null) return null;
-  return new Date(new Date().getFullYear(), m, d);
+  return new Date(taskYear(t), m, d);
 }
 function daysUntil(t) {
   const tg = commitmentDate(t);
@@ -299,19 +299,28 @@ function isoWeekNumber(y, m, d) {
   const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
   return Math.ceil((((target - yearStart) / 86400000) + 1) / 7);
 }
+// El mes y el día se guardan en palabras ("Marzo", "Lunes 16") porque así se leen
+// en el Sheet, pero el AÑO también se guarda: sin él, una tarea de diciembre pasado
+// se lee como diciembre próximo y el 1 de enero todas las alertas saltan un año.
 function deriveDateFields(dateStr) {
-  if (!dateStr) return { mes: "", fecha: "", semana: "" };
+  if (!dateStr) return { mes: "", anio: "", fecha: "", semana: "" };
   const [y, m, d] = dateStr.split("-").map(Number);
-  if (!y || !m || !d) return { mes: "", fecha: "", semana: "" };
+  if (!y || !m || !d) return { mes: "", anio: "", fecha: "", semana: "" };
   const date = new Date(y, m - 1, d);
-  return { mes: MESES[m - 1], fecha: `${DIAS_SEMANA[date.getDay()]} ${d}`, semana: `Semana ${isoWeekNumber(y, m, d)}` };
+  return { mes: MESES[m - 1], anio: String(y), fecha: `${DIAS_SEMANA[date.getDay()]} ${d}`, semana: `Semana ${isoWeekNumber(y, m, d)}` };
+}
+
+// Año de la tarea: el guardado si existe; si no (tareas de antes de este cambio),
+// el año en curso, que es el comportamiento que había.
+function taskYear(t) {
+  const y = parseInt(t && t.anio, 10);
+  return Number.isFinite(y) && y > 2000 ? y : new Date().getFullYear();
 }
 function reconstructDateStr(task) {
   const m = MONTH_INDEX[task.mesCompromiso || task.mes];
   const d = getDayNumber(task.fecha);
   if (m == null || d == null) return "";
-  const year = new Date().getFullYear();
-  return `${year}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return `${taskYear(task)}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 // Bitácora / historial
@@ -1233,7 +1242,7 @@ function Board({ onLogout }) {
                 <Field label="Fecha (calendario)">
                   <input type="date" className="input" value={taskDateStr} onChange={e => {
                     const ds = e.target.value; const derived = deriveDateFields(ds);
-                    updateTaskField(selectedTask.id, { fecha: derived.fecha, semana: derived.semana, mes: derived.mes, mesCompromiso: derived.mes }, true);
+                    updateTaskField(selectedTask.id, { fecha: derived.fecha, anio: derived.anio, semana: derived.semana, mes: derived.mes, mesCompromiso: derived.mes }, true);
                   }} />
                   {taskDateStr && <div className="form-derived" style={{marginTop:'0.4rem'}}>{selectedTask.mes} · {selectedTask.fecha} · {selectedTask.semana}</div>}
                 </Field>
@@ -1465,7 +1474,7 @@ function Board({ onLogout }) {
               <Field label="Empresa"><select value={newTask.empresa} onChange={e => setNewTask({ ...newTask, empresa: e.target.value })} className="input">{EMPRESAS.map(e => <option key={e}>{e}</option>)}</select></Field>
               <Field label="Proyecto (existente o nuevo)"><input className="input" list="dl-proyectos" value={newTask.proyecto} onChange={e => setNewTask({ ...newTask, proyecto: e.target.value })} placeholder="Selecciona o escribe nuevo" /><datalist id="dl-proyectos">{existingProjects.map(p => <option key={p} value={p} />)}</datalist></Field>
               <Field label="Responsable (existente o nuevo)"><input className="input" list="dl-responsables" value={newTask.responsable} onChange={e => setNewTask({ ...newTask, responsable: e.target.value })} placeholder="Selecciona o escribe nuevo" /><datalist id="dl-responsables">{existingResponsables.map(r => <option key={r} value={r} />)}</datalist></Field>
-              <Field label="Fecha (calendario)"><input type="date" className="input" value={newTask._dateStr || ""} onChange={e => { const ds = e.target.value; const d = deriveDateFields(ds); setNewTask({ ...newTask, _dateStr: ds, fecha: d.fecha, semana: d.semana, mes: d.mes, mesCompromiso: d.mes }); }} /></Field>
+              <Field label="Fecha (calendario)"><input type="date" className="input" value={newTask._dateStr || ""} onChange={e => { const ds = e.target.value; const d = deriveDateFields(ds); setNewTask({ ...newTask, _dateStr: ds, fecha: d.fecha, anio: d.anio, semana: d.semana, mes: d.mes, mesCompromiso: d.mes }); }} /></Field>
               <Field label="Prioridad"><select className="input" value={newTask.prioridad} onChange={e => setNewTask({ ...newTask, prioridad: e.target.value })}>{PRIORIDADES.map(p => <option key={p}>{p}</option>)}</select></Field>
               <Field label="Estado"><select className="input" value={newTask.estado} onChange={e => setNewTask({ ...newTask, estado: e.target.value })}>{ESTADOS.map(s => <option key={s}>{s}</option>)}</select></Field>
             </div>
