@@ -7,7 +7,8 @@ memorias de `~/.claude/projects/-Users-a-/memory/`. Lo no verificable está en *
 ## Qué es
 Tablero de tareas de **Aurum Arquitectos + YoDesarrollo**: quién debe qué, para cuándo, en qué va.
 Lo usa Alejandro (rol admin = "Dirección") todos los días y el equipo (Alma, Mariana, Sayri, Genaro,
-Fernando, Miguel, PG Arquitectos — los responsables reales de la hoja, CSV 2026-09-04).
+Fernando, Miguel, PG Arquitectos — los responsables humanos de la hoja, CSV 2026-09-04). En la columna
+`responsable` también aparece **`Claude`**: hay tareas asignadas a la máquina, no solo a personas.
 En el portal aparece como **"Proyectos y tareas"**; en YOD OS, como **"Operación semanal" / "MOAC"**
 (memoria `board-tareas-aurum-yod`). Código de tablero en el Portero: **`TA`**.
 
@@ -20,7 +21,8 @@ En el portal aparece como **"Proyectos y tareas"**; en YOD OS, como **"Operació
 **LA TRAMPA DEL NOMBRE (léela dos veces):**
 - **`board-aurum`** = ESTE. Tareas y decisiones. Clon local en **`~/Desktop/board-aurum`**, NO en `~/`.
 - **`aurum-board`** = OTRO repo (`~/aurum-board`, existe): métricas de redes, código de Portero `MK`.
-- `~/board-aurum` **no existe** — y `scripts/sync_sheet.sh` apunta ahí (ver Hallazgos).
+- `~/board-aurum` **no existe** — y el viejo `scripts/sync_sheet.sh` apunta ahí como `REPO_DIR`
+  (solo se puede leer en el repo de la org o con `git show c1a5005:scripts/sync_sheet.sh`; ver Archivos).
 
 ## Reglas INVIOLABLES
 1. **El Sheet manda.** `11SU8pE4tpaIuOfiDs8dS9Fqtc2Ul0mhBqBaD2WtR_WM` es la bandeja única de pendientes
@@ -28,9 +30,10 @@ En el portal aparece como **"Proyectos y tareas"**; en YOD OS, como **"Operació
 2. **Nunca `clasp deploy` / `clasp redeploy` sobre un webapp de GAS**: le quita el entryPoint, el `/exec`
    queda en 404 y el tablero muere. Redespliegue SOLO desde el editor (Implementar → Administrar → ✎ →
    Nueva versión). `clasp push` sí es seguro (memoria `moac-metodo-genealogia`, reglas del 2026-08-25).
-3. **El repo es ESPEJO del backend.** El `Code.gs` vivo NO está aquí (aquí solo vive
-   `apps-script/portero-auth.gs`, que es una *referencia* para pegar). Antes de tocar el backend, pide el
-   código del editor (memoria `backend-vivo-no-es-el-repo`).
+3. **El repo es ESPEJO del backend.** El `Code.gs` vivo NO está en ningún repo: en el de la org solo
+   vive `apps-script/portero-auth.gs`, que es una *referencia* para pegar (en este clon ni eso,
+   ver Archivos). Antes de tocar el backend, pide el código del editor
+   (memoria `backend-vivo-no-es-el-repo`).
 4. **Cero secretos en el código.** Se retiraron el 2026-07-12; hoy cada petición viaja con la credencial
    `k` del Portero y el servidor la valida (`src/App.jsx:14-24`, README). No vuelvas a quemar una clave.
 5. **El Centro de Decisión es solo para Dirección.** `DecisionCenter` corta si el rol ≠ `admin`
@@ -43,27 +46,51 @@ En el portal aparece como **"Proyectos y tareas"**; en YOD OS, como **"Operació
    Cualquier otra cosa `normalizeEstado` la degrada a "Pendiente" (`src/App.jsx:113-121`).
 
 ## Archivos
-- `src/App.jsx` (4,216 líneas) — **el tablero entero**. Config arriba (líneas 14-29), API (`apiCall`,
-  línea 426), Centro de Decisión (1596-1805), `MoacPanel` (1835), vistas (1994), chat IA (3972+), y
-  todo el CSS en un `<style>` al final (~3028 en adelante).
-- `index.html` — carga `portero.js` (acceso) y `os/shell.js` (barra lateral YOD OS). **OJO:** el de
-  este clon aún apunta a `alexpueblag.github.io`; **el vivo apunta a `yodesarrollomx.github.io`**
-  (curl 2026-09-04). Este clon va atrás.
+
+**LEE ESTO ANTES DE BUSCAR UN ARCHIVO: el código del tablero NO está en este clon.**
+`~/Desktop/board-aurum` está en la rama `main` de `alexpueblag/board-aurum`, que hoy es el
+**cascarón de redirección**. `git ls-files` devuelve **5 archivos** y ya: `.nojekyll`, `404.html`,
+`CLAUDE.md`, `README.md`, `index.html`. Aquí **no hay** `src/`, ni `apps-script/`, ni `scripts/`,
+ni `.github/workflows/` (verificado 2026-09-04).
+
+Los cinco archivos que sí están aquí:
+- `index.html` — la página **"Se mudó"**: `meta refresh` + `canonical` + `location.replace`, los tres a
+  `https://yodesarrollomx.github.io/board-aurum/`. **No** carga `portero.js` ni `shell.js`.
+- `404.html` — recibe cualquier ruta que no exista y la reenvía conservando ruta, query y fragmento.
+- `README.md` — la ficha del cascarón: por qué existe y por qué no se borra (QRs impresos, captions ya
+  publicados, ligas mandadas por WhatsApp).
+- `.nojekyll` y este `CLAUDE.md`.
+
+**Dónde está el código de verdad:** en **`yodesarrollomx/board-aurum`** (HEAD `8150536`, `git ls-remote`
+2026-09-04). Es el repo que sirve Pages. Para leerlo hay que clonar la org.
+El `index.html` que sirve ese repo **sí** carga los dos scripts, desde `yodesarrollomx.github.io`
+(`.../potenciales-yod/portero.js` y `.../yod-portal/os/shell.js`, curl 2026-09-04).
+
+**Cómo leer el código histórico sin salir de este clon:** el árbol viejo sigue en el commit **`c1a5005`**
+(26-ago-2026). `git ls-tree -r --name-only c1a5005` lo lista y `git show c1a5005:src/App.jsx` lo abre.
+**Todas las referencias `src/App.jsx:NNN` de este documento son contra `c1a5005`**, no contra el HEAD de
+la org: si algo cambió después de la mudanza, el número de línea ya no cuadra. Contra ese commit:
+- `src/App.jsx` — **el tablero entero**. Config arriba (líneas 14-29), API (`apiCall`, línea 426), Centro
+  de Decisión (1596-1805), `MoacPanel` (1835), vistas (1994), chat IA (3972+), y todo el CSS en un
+  `<style>` al final (~3028 en adelante).
 - `apps-script/portero-auth.gs` — referencia de cómo el backend valida contra el Portero
   (`credencialValida_`, canje sin `board=`, código `TA`, caché 10 min, fail-closed).
 - `.github/workflows/deploy.yml` — build Vite (`npm ci && npm run build`) → GitHub Pages, en cada push
   a `main`. `vite.config.js` fija `base: '/board-aurum/'`.
-- `scripts/sync_sheet.py` / `.sh` — sincronizador viejo Sheet→`public/data.json`. **Legado**: ni existe
-  `public/`, ni existe `~/board-aurum` que el `.sh` usa como `REPO_DIR`.
-- `README.md` — **desactualizado al 2026-09-04**: pone la URL vieja como "URL en vivo" y dice que falta la
-  reconexión del Apps Script, ya hecha (POST con clave mala → `{"ok":false,"error":"liga"}`, memorias
-  `barrido-backends-1ago` y `board-aurum-escritura-sin-navegador`).
+- `scripts/sync_sheet.py` / `.sh` — sincronizador viejo Sheet→`public/data.json`. **Legado**: el `.sh` usa
+  `REPO_DIR="$HOME/board-aurum"`, ruta que no existe en esta Mac (`git show c1a5005:scripts/sync_sheet.sh`).
+- `README.md` de `c1a5005` — ese sí es el desactualizado: pone la URL vieja como "URL en vivo" y dice que
+  falta la reconexión del Apps Script, ya hecha (POST con clave mala → `{"ok":false,"error":"liga"}`,
+  memorias `barrido-backends-1ago` y `board-aurum-escritura-sin-navegador`). El README que hay que
+  arreglar vive en el repo de la org, **no aquí**.
 
 ## Arquitectura de datos
 El Sheet es la raíz. El tablero pinta; el Apps Script es el único puente.
 
 ```
-Sheet "board" 11SU8pE4tpaIuOfiDs8dS9Fqtc2Ul0mhBqBaD2WtR_WM  (147 filas, 15 proyectos · CSV 4-sep-2026)
+Sheet "board" 11SU8pE4tpaIuOfiDs8dS9Fqtc2Ul0mhBqBaD2WtR_WM  (una fila por tarea; el conteo crece solo.
+  Para el numero del dia: export?format=csv&gid=0 — HTTP 200 sin credencial. OJO al contar proyectos:
+  hay "Admin" y "Admin " con espacio al final, el mismo proyecto se cuenta dos veces si no normalizas)
   columnas = SHEET_FIELDS (App.jsx:99) + id/links
   comentarios = "autor~fecha~texto|||autor~fecha~texto"  (App.jsx:357-367)
   subtareas   = "texto:1|texto:0"                        (App.jsx:344-354)
@@ -143,16 +170,16 @@ marca de ejecución como `🤖 Ejecutado: …` (vale por texto, sin importar el 
 | Rehacer la **liga mágica** de Alejandro: al 25-ago `pyod_clave_v1` estaba VACÍA en su Chrome, el board corría de caché y no guardaba (memoria `moac-metodo-genealogia`) | Alejandro | Un `update` desde el board que reaparezca en el CSV del Sheet |
 | El **Sheet del board se lee sin credencial** ("cualquiera con el enlace: lector"): verificado hoy, HTTP 200 y 147 filas por `export?format=csv` | Alejandro decide; Claude ejecuta | Que el mismo `curl` devuelva 401/403 — y que `sync_sheet.py` deje de depender de eso |
 | El revisador no puede dejar la marca `🤖 Ejecutado` (se topa con el Portero y yo no tecleo credenciales) | Alejandro (credencial de servicio, 90 días) | Un comentario `🤖 Ejecutado` puesto por la tarea programada, no a mano (memoria `centro-decision-marca-bloqueada`) |
-| Este clon del Escritorio va **atrás** de los dos remotos y su `origin` es la casa vieja | Alejandro decide a qué remoto se publica | `git log` local == HEAD del repo que sirve Pages |
-| Actualizar `README.md` (URL vieja + "reconexión pendiente" ya hecha) | Claude, con OK de Alejandro | El README apuntando a `yodesarrollomx.github.io` y sin ese párrafo |
+| Este clon del Escritorio solo tiene el cascarón: está al día con su `origin` (la casa vieja), pero no contiene el código que sirve Pages | Alejandro decide si se clona la org aquí o se deja así | Un clon de `yodesarrollomx/board-aurum` en la Mac, o la decisión escrita de trabajar solo contra la org |
+| Actualizar el `README.md` **del repo de la org** (URL vieja como "URL en vivo" + "reconexión pendiente" ya hecha). El README de este clon NO es ese: es la ficha del cascarón y está bien como está | Claude, con OK de Alejandro | El README de `yodesarrollomx/board-aurum` apuntando a `yodesarrollomx.github.io` y sin ese párrafo |
 | Objetivo **C-3** del MOAC: su alcance se amplió de facto a cobranza Y pasivos; falta actualizar el texto en OBJETIVOS | Alejandro | La celda del objetivo con el texto nuevo (memoria `moac-metodo-genealogia`, 25-ago) |
 | Tareas programadas: desactivar `board-aurum-whatsapp-sync-ligero` y mover `aurum-qaa-diario` a las 7:30 | Alejandro | La UI de Scheduled mostrando el cambio (memoria `centro-decision-board`, 1-ago) |
 
 ## Por confirmar (NO afirmar sin preguntar)
-- **¿A qué repo se publica hoy?** `origin` de este clon es `alexpueblag/board-aurum` (HEAD `ea62103`),
-  pero lo vivo lo sirve `yodesarrollomx/board-aurum` (HEAD `8150536`); local está en `c1a5005`
-  (`git ls-remote`, 4-sep-2026). Pregunta: *¿un push a `origin` todavía publica algo, o el único repo
-  que despliega es el de la org?*
+- **¿A qué repo se publica hoy?** `origin` de este clon es `alexpueblag/board-aurum`, y hoy su HEAD y el
+  local son el mismo commit — `a94cb77`, el cascarón más este documento (`git ls-remote origin` +
+  `git log -1`, 4-sep-2026). Lo vivo lo sirve `yodesarrollomx/board-aurum`, HEAD `8150536`.
+  Pregunta: *¿un push a `origin` todavía publica algo, o el único repo que despliega es el de la org?*
 - **La columna `anio`:** `SHEET_FIELDS` la incluye (`src/App.jsx:99`) y hay un commit "guardar el AÑO"
   (`6ec4a72`), pero la hoja `gid=0` **no tiene** columna `anio` (CSV 4-sep). Pregunta: *¿el backend v9 la
   agrega en otra pestaña, o el arreglo del 1 de enero no está persistiendo?*
